@@ -54,7 +54,7 @@ print(confusion_matrix(y_test, pred))
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
-initial_type = [('float_input', FloatTensorType([1, 4]))]
+initial_type = [('float_input', FloatTensorType(['N', 4]))]
 onx = convert_sklearn(clr, initial_types=initial_type)
 with open("logreg_iris.onnx", "wb") as f:
     f.write(onx.SerializeToString())
