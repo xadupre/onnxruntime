@@ -78,8 +78,11 @@ for x in [
         numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
         numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
         ]:
-    r = sess.run([output_name], {input_name: x})
-    print("Shape={0} and predicted labels={1}".format(x.shape, r))
+    try:
+        r = sess.run([output_name], {input_name: x})
+        print("Shape={0} and predicted labels={1}".format(x.shape, r))
+    except RuntimeError as e:
+        print("ERROR with Shape={0} - {1}".format(x.shape, e))
 
 for x in [
         numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
@@ -88,8 +91,11 @@ for x in [
         numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
         numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
         ]:
-    r = sess.run(None, {input_name: x})
-    print("Shape={0} and predicted probabilities={1}".format(x.shape, r[1]))
+    try:
+        r = sess.run(None, {input_name: x})
+        print("Shape={0} and predicted probabilities={1}".format(x.shape, r[1]))
+    except RuntimeError as e:
+        print("ERROR with Shape={0} - {1}".format(x.shape, e))
 
 #########################
 # It does not fail either if the number of dimension
@@ -100,5 +106,8 @@ for x in [
         numpy.array([[[1.0, 2.0, 3.0]]], dtype=numpy.float32),
         numpy.array([[[1.0, 2.0]], [[3.0, 4.0]]], dtype=numpy.float32),
         ]:
-    r = sess.run([output_name], {input_name: x})
-    print("Shape={0} and predicted labels={1}".format(x.shape, r))
+    try:
+        r = sess.run([output_name], {input_name: x})
+        print("Shape={0} and predicted labels={1}".format(x.shape, r))
+    except RuntimeError as e:
+        print("ERROR with Shape={0} - {1}".format(x.shape, e))

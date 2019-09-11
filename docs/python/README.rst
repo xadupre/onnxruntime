@@ -52,7 +52,7 @@ replaces *scikit-learn* to compute the predictions.
 Changes
 -------
 
-0.5.995
+0.5.997
 ^^^^^^^
 
 development
