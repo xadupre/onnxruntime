@@ -24,9 +24,12 @@ model = load(name)
 
 rep = backend.prepare(model, 'CPU')
 x = np.array([[-1.0, -2.0]], dtype=np.float32)
-label, proba = rep.run(x)
-print("label={}".format(label))
-print("probabilities={}".format(proba))
+try:
+    label, proba = rep.run(x)
+    print("label={}".format(label))
+    print("probabilities={}".format(proba))
+except RuntimeError as e:
+    print(e)
 
 ########################################
 # The device depends on how the package was compiled,
@@ -40,9 +43,12 @@ print(get_device())
 
 rep = backend.prepare(name, 'CPU')
 x = np.array([[-1.0, -2.0]], dtype=np.float32)
-label, proba = rep.run(x)
-print("label={}".format(label))
-print("probabilities={}".format(proba))
+try:
+    label, proba = rep.run(x)
+    print("label={}".format(label))
+    print("probabilities={}".format(proba))
+except RuntimeError as e:
+    print(e)
 
 #######################################
 # The backend API is implemented by other frameworks

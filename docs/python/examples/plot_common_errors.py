@@ -53,9 +53,12 @@ except Exception as e:
 # and *onnxruntime* will then return all the outputs.
 
 x = numpy.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=numpy.float32)
-res = sess.run(None, {input_name: x})
-print("All outputs")
-print(res)
+try:
+    res = sess.run(None, {input_name: x})
+    print("All outputs")
+    print(res)
+except RuntimeError as e:
+    print(e)
 
 #########################
 # The same goes if the input name is misspelled.
