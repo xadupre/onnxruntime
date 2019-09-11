@@ -66,8 +66,10 @@ with open("logreg_iris.onnx", "wb") as f:
 import onnxruntime as rt
 sess = rt.InferenceSession("logreg_iris.onnx")
 
-print("input name='{}' and shape={}".format(sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
-print("output name='{}' and shape={}".format(sess.get_outputs()[0].name, sess.get_outputs()[0].shape))
+print("input name='{}' and shape={}".format(
+    sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
+print("output name='{}' and shape={}".format(
+    sess.get_outputs()[0].name, sess.get_outputs()[0].shape))
 
 ##################################
 # We compute the predictions.
