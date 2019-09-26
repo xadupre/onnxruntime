@@ -16,6 +16,7 @@ as Deep Learning algorithms in the
     tutorial
     api_summary
     auto_examples/index
+    Versions <README>
 
 :ref:`genindex`
 

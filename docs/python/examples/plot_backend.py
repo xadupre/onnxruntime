@@ -16,6 +16,7 @@ of a simple logistic regression model.
 """
 import numpy as np
 from onnxruntime import datasets
+from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 import onnxruntime.backend as backend
 from onnx import load
 
@@ -28,7 +29,7 @@ try:
     label, proba = rep.run(x)
     print("label={}".format(label))
     print("probabilities={}".format(proba))
-except RuntimeError as e:
+except (RuntimeError, InvalidArgument) as e:
     print(e)
 
 ########################################
@@ -47,7 +48,7 @@ try:
     label, proba = rep.run(x)
     print("label={}".format(label))
     print("probabilities={}".format(proba))
-except RuntimeError as e:
+except (RuntimeError, InvalidArgument) as e:
     print(e)
 
 #######################################

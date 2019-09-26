@@ -16,6 +16,7 @@ trained on *Iris* datasets. The model takes
 a vector of dimension 2 and returns a class among three.
 """
 import onnxruntime as rt
+from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 import numpy
 from onnxruntime.datasets import get_example
 
@@ -57,7 +58,7 @@ try:
     res = sess.run(None, {input_name: x})
     print("All outputs")
     print(res)
-except RuntimeError as e:
+except (RuntimeError, InvalidArgument) as e:
     print(e)
 
 #########################
@@ -84,7 +85,7 @@ for x in [
     try:
         r = sess.run([output_name], {input_name: x})
         print("Shape={0} and predicted labels={1}".format(x.shape, r))
-    except RuntimeError as e:
+    except (RuntimeError, InvalidArgument) as e:
         print("ERROR with Shape={0} - {1}".format(x.shape, e))
 
 for x in [
@@ -97,7 +98,7 @@ for x in [
     try:
         r = sess.run(None, {input_name: x})
         print("Shape={0} and predicted probabilities={1}".format(x.shape, r[1]))
-    except RuntimeError as e:
+    except (RuntimeError, InvalidArgument) as e:
         print("ERROR with Shape={0} - {1}".format(x.shape, e))
 
 #########################
@@ -112,5 +113,5 @@ for x in [
     try:
         r = sess.run([output_name], {input_name: x})
         print("Shape={0} and predicted labels={1}".format(x.shape, r))
-    except RuntimeError as e:
+    except (RuntimeError, InvalidArgument) as e:
         print("ERROR with Shape={0} - {1}".format(x.shape, e))
