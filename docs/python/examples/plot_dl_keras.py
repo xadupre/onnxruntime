@@ -35,9 +35,13 @@ if not os.path.exists('dense121.onnx'):
         model_present = False
         
     if model_present:
-        onx = convert_keras(model, 'dense121.onnx')    
-        with open("dense121.onnx", "wb") as f:
-            f.write(onx.SerializeToString())
+        try:
+            onx = convert_keras(model, 'dense121.onnx')    
+            with open("dense121.onnx", "wb") as f:
+                f.write(onx.SerializeToString())
+        except Exception as e:
+            print(e)
+            model_present = False
 
 ##################################
 # Let's load an image (source: wikipedia).
