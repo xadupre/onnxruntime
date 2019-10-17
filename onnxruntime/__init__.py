@@ -12,7 +12,7 @@ community, it supports traditional ML models as well
 as Deep Learning algorithms in the
 `ONNX-ML format <https://github.com/onnx/onnx/blob/master/docs/IR.md>`_.
 """
-__version__ = "0.5.9993"
+__version__ = "0.5.9994"
 __author__ = "Microsoft"
 
 from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, RunOptions, SessionOptions, set_default_logger_severity, NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode
