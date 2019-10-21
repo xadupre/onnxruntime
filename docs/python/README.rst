@@ -11,7 +11,7 @@ for further details.
 Changes
 -------
 
-0.5.9994
+0.5.9995
 ^^^^^^^^
 
 development
