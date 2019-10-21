@@ -46,9 +46,8 @@ pygments_style = 'default'
 
 # -- Options for HTML output -------------------------------------------------
 
-html_theme = "alabaster"
-html_theme_path = [alabaster.get_path()]
-html_logo = "ONNX_Runtime_icon.png"
+html_theme = "pyramid"
+html_logo = "../ONNX_Runtime_icon.png"
 html_static_path = ['_static']
 graphviz_output_format = "svg"
 
