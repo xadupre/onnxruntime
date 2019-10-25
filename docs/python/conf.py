@@ -9,7 +9,6 @@ import os
 import sys
 import shutil
 import onnxruntime
-import alabaster
 # import recommonmark
 
 # -- Project information -----------------------------------------------------
@@ -38,7 +37,12 @@ extensions = [
 
 templates_path = ['_templates']
 
-source_suffix = ['.rst']
+source_parsers = {
+   '.md': 'recommonmark.parser.CommonMarkParser',
+}
+
+source_suffix = ['.rst'] # , '.md']
+
 master_doc = 'index'
 language = "en"
 exclude_patterns = []
@@ -47,7 +51,7 @@ pygments_style = 'default'
 # -- Options for HTML output -------------------------------------------------
 
 html_theme = "pyramid"
-html_logo = "../ONNX_Runtime_icon.png"
+html_logo = "ONNX_Runtime_icon.png"
 html_static_path = ['_static']
 graphviz_output_format = "svg"
 

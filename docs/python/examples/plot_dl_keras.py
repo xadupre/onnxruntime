@@ -21,27 +21,13 @@ to compute the predictions.
 """
 import os
 if not os.path.exists('dense121.onnx'):
-    try:
-        from tensorflow.keras.applications.densenet import DenseNet121
-    except ImportError:
-        from keras.applications.densenet import DenseNet121
+    from keras.applications.densenet import DenseNet121
     model = DenseNet121(include_top=True, weights='imagenet')
 
-    try:
-        from keras2onnx import convert_keras
-        model_present = True
-    except ImportError as e:
-        print(e)
-        model_present = False
-        
-    if model_present:
-        try:
-            onx = convert_keras(model, 'dense121.onnx')    
-            with open("dense121.onnx", "wb") as f:
-                f.write(onx.SerializeToString())
-        except Exception as e:
-            print(e)
-            model_present = False
+    from keras2onnx import convert_keras
+    onx = convert_keras(model, 'dense121.onnx')    
+    with open("dense121.onnx", "wb") as f:
+        f.write(onx.SerializeToString())
 
 ##################################
 # Let's load an image (source: wikipedia).
@@ -59,16 +45,12 @@ plt.axis('off')
 import onnxruntime as rt
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidGraph
 
-
-if model_present:
-    try:
-        sess = rt.InferenceSession('dense121.onnx')
-        ok = True
-    except (InvalidGraph, TypeError, RuntimeError) as e:
-        # Probably a mismatch between onnxruntime and onnx version.
-        print(e)
-        ok = False
-else:
+try:
+    sess = rt.InferenceSession('dense121.onnx')
+    ok = True
+except (InvalidGraph, TypeError, RuntimeError) as e:
+    # Probably a mismatch between onnxruntime and onnx version.
+    print(e)
     ok = False
 
 if ok:
