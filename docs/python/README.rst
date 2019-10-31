@@ -8,10 +8,11 @@ For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://ak
 Changes
 -------
 
-0.5.9995
-^^^^^^^^
+1.0.0
+^^^^^
 
-development
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.0.0
+
 0.5.0
 ^^^^^
 
