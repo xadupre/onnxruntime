@@ -11,3 +11,4 @@ For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://ak
     tutorial
     api_summary
     auto_examples/index
+    notebooks

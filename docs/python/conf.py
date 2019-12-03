@@ -33,6 +33,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.graphviz',
     "pyquickhelper.sphinxext.sphinx_runpython_extension",
+    "nbsphinx",
 ]
 
 templates_path = ['_templates']
@@ -47,10 +48,11 @@ master_doc = 'index'
 language = "en"
 exclude_patterns = []
 pygments_style = 'default'
+nbsphinx_execute = 'never'
 
 # -- Options for HTML output -------------------------------------------------
 
-html_theme = "pyramid"
+html_theme = "alabaster"
 html_logo = "ONNX_Runtime_icon.png"
 html_static_path = ['_static']
 graphviz_output_format = "svg"
@@ -89,4 +91,3 @@ def setup(app):
         import shutil
         shutil.copy(dest, loc)
     return app
-
