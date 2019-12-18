@@ -299,15 +299,15 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       float scores = 0;
       unsigned char has_scores = 0;
 
-      if (nbtrees_ >= 10) {
+      if (nbtrees_ <= 10) {
+        for (int64_t j = 0; j < nbtrees_; ++j)
+          ProcessTreeNode(&scores, roots_[j], x_data, &has_scores);
+      } else {
 #ifdef USE_OPENMP
 #pragma omp parallel for reduction(|                         \
                                    : has_scores) reduction(+ \
                                                            : scores)
 #endif
-        for (int64_t j = 0; j < nbtrees_; ++j)
-          ProcessTreeNode(&scores, roots_[j], x_data, &has_scores);
-      } else {
         for (int64_t j = 0; j < nbtrees_; ++j)
           ProcessTreeNode(&scores, roots_[j], x_data, &has_scores);
       }
@@ -325,25 +325,45 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       float scores;
       unsigned char has_scores;
       float val;
+      if (N <= 10) {
+        for (int64_t i = 0; i < N; ++i) {
+          scores = 0;
+          has_scores = 0;
+
+          for (size_t j = 0; j < (size_t)nbtrees_; ++j)
+            ProcessTreeNode(&scores, roots_[j], x_data + i * stride, &has_scores);
+
+          val = has_scores
+                    ? (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
+                           ? scores / roots_.size()
+                           : scores) +
+                          origin
+                    : origin;
+          *((float*)(Y->template MutableData<T>()) + i) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
+                                                              ? ComputeProbit(val)
+                                                              : val;
+        }
+      } else {
 #ifdef USE_OPENMP
 #pragma omp parallel for private(scores, has_scores, val)
 #endif
-      for (int64_t i = 0; i < N; ++i) {
-        scores = 0;
-        has_scores = 0;
+        for (int64_t i = 0; i < N; ++i) {
+          scores = 0;
+          has_scores = 0;
 
-        for (size_t j = 0; j < (size_t)nbtrees_; ++j)
-          ProcessTreeNode(&scores, roots_[j], x_data + i * stride, &has_scores);
+          for (size_t j = 0; j < (size_t)nbtrees_; ++j)
+            ProcessTreeNode(&scores, roots_[j], x_data + i * stride, &has_scores);
 
-        val = has_scores
-                  ? (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
-                         ? scores / roots_.size()
-                         : scores) +
-                        origin
-                  : origin;
-        *((float*)(Y->template MutableData<T>()) + i) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
-                                                            ? ComputeProbit(val)
-                                                            : val;
+          val = has_scores
+                    ? (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
+                           ? scores / roots_.size()
+                           : scores) +
+                          origin
+                    : origin;
+          *((float*)(Y->template MutableData<T>()) + i) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
+                                                              ? ComputeProbit(val)
+                                                              : val;
+        }
       }
     }
   } else {
@@ -381,29 +401,53 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       size_t j;
       int64_t jt;
 
+      if (N <= 10) {
+        for (int64_t i = 0; i < N; ++i) {
+          current_weight_0 = i * stride;
+          std::fill(scores.begin(), scores.end(), 0.f);
+          std::fill(outputs.begin(), outputs.end(), 0.f);
+          memset(has_scores.data(), 0, has_scores.size());
+
+          for (j = 0; j < roots_.size(); ++j)
+            ProcessTreeNode(scores.data(), roots_[j], x_data + current_weight_0,
+                            has_scores.data());
+
+          for (jt = 0; jt < n_targets_; ++jt) {
+            val = base_values_.size() == (size_t)n_targets_ ? base_values_[jt] : 0.f;
+            val = (has_scores[jt])
+                      ? val + (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
+                                   ? scores[jt] / roots_.size()
+                                   : scores[jt])
+                      : val;
+            outputs[jt] = val;
+          }
+          write_scores(outputs, post_transform_, i * n_targets_, Y, -1);
+        }
+      } else {
 #ifdef USE_OPENMP
 #pragma omp parallel for firstprivate(scores, has_scores, outputs) private(val, current_weight_0, j)
 #endif
-      for (int64_t i = 0; i < N; ++i) {
-        current_weight_0 = i * stride;
-        std::fill(scores.begin(), scores.end(), 0.f);
-        std::fill(outputs.begin(), outputs.end(), 0.f);
-        memset(has_scores.data(), 0, has_scores.size());
+        for (int64_t i = 0; i < N; ++i) {
+          current_weight_0 = i * stride;
+          std::fill(scores.begin(), scores.end(), 0.f);
+          std::fill(outputs.begin(), outputs.end(), 0.f);
+          memset(has_scores.data(), 0, has_scores.size());
 
-        for (j = 0; j < roots_.size(); ++j)
-          ProcessTreeNode(scores.data(), roots_[j], x_data + current_weight_0,
-                          has_scores.data());
+          for (j = 0; j < roots_.size(); ++j)
+            ProcessTreeNode(scores.data(), roots_[j], x_data + current_weight_0,
+                            has_scores.data());
 
-        for (jt = 0; jt < n_targets_; ++jt) {
-          val = base_values_.size() == (size_t)n_targets_ ? base_values_[jt] : 0.f;
-          val = (has_scores[jt])
-                    ? val + (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
-                                 ? scores[jt] / roots_.size()
-                                 : scores[jt])
-                    : val;
-          outputs[jt] = val;
+          for (jt = 0; jt < n_targets_; ++jt) {
+            val = base_values_.size() == (size_t)n_targets_ ? base_values_[jt] : 0.f;
+            val = (has_scores[jt])
+                      ? val + (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
+                                   ? scores[jt] / roots_.size()
+                                   : scores[jt])
+                      : val;
+            outputs[jt] = val;
+          }
+          write_scores(outputs, post_transform_, i * n_targets_, Y, -1);
         }
-        write_scores(outputs, post_transform_, i * n_targets_, Y, -1);
       }
     }
   }
