@@ -300,7 +300,9 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       unsigned char has_scores = 0;
 
 #ifdef USE_OPENMP
-#pragma omp parallel for
+#pragma omp parallel for reduction(+                       \
+                                   : scores) reduction(max \
+                                                       : has_scores)
 #endif
       for (int64_t j = 0; j < nbtrees_; ++j)
         ProcessTreeNode(&scores, roots_[j], x_data, &has_scores);
@@ -344,9 +346,10 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       std::vector<float> scores(n_targets_, (T)0);
       std::vector<unsigned char> has_scores(n_targets_, 0);
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
+      // Requires a custom aggregator.
+      // #ifdef USE_OPENMP
+      // #pragma omp parallel for
+      // #endif
       for (int64_t j = 0; j < nbtrees_; ++j)
         ProcessTreeNode(scores.data(), roots_[j], x_data, has_scores.data());
 
@@ -370,9 +373,10 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       std::vector<unsigned char> has_scores(n_targets_, 0);
       int64_t current_weight_0;
       float val;
+      size_t j;
 
 #ifdef USE_OPENMP
-#pragma omp parallel for firstprivate(scores, has_scores, outputs) private(val, current_weight_0)
+#pragma omp parallel for firstprivate(scores, has_scores, outputs) private(val, current_weight_0, j)
 #endif
       for (int64_t i = 0; i < N; ++i) {
         current_weight_0 = i * stride;
@@ -380,7 +384,7 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
         std::fill(outputs.begin(), outputs.end(), 0.f);
         memset(has_scores.data(), 0, has_scores.size());
 
-        for (size_t j = 0; j < roots_.size(); ++j)
+        for (j = 0; j < roots_.size(); ++j)
           ProcessTreeNode(scores.data(), roots_[j], x_data + current_weight_0,
                           has_scores.data());
 
