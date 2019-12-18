@@ -294,11 +294,11 @@ void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, in
   if (scores.size() >= 2) {
     switch (post_transform) {
       case POST_EVAL_TRANSFORM::PROBIT:
-        for (float& score : scores)
+        for (T& score : scores)
           score = ComputeProbit(score);
         break;
       case POST_EVAL_TRANSFORM::LOGISTIC:
-        for (float& score : scores)
+        for (T& score : scores)
           score = ComputeLogistic(score);
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX:
