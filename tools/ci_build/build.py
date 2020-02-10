@@ -179,6 +179,10 @@ def is_ubuntu_1604():
     dist, ver = get_linux_distro()
     return dist == 'Ubuntu' and ver.startswith('16.04')
 
+def is_debian():
+    dist, ver = get_linux_distro()
+    return dist == 'Debian'
+
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
@@ -942,12 +946,13 @@ def main():
         if args.android:
             # Cross-compiling for Android
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
-        if is_ubuntu_1604():
+        if is_ubuntu_1604() or is_debian():
             if (args.arm or args.arm64):
                 raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
             install_ubuntu_deps(args)
             if not is_docker():
                 install_python_deps()
+            cmake_extra_args += ['-fPIC']
         if (args.enable_pybind and is_windows()):
             install_python_deps(args.numpy_version)
         if (not args.skip_submodule_sync):
