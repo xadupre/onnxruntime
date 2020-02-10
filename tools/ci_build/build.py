@@ -912,6 +912,7 @@ def main():
         cmake_extra_args = []
         path_to_protoc_exe = None
         if(is_windows()):
+          print("---- WINDOWS")
           if (args.x86):
             cmake_extra_args = ['-A','Win32','-T','host=x64','-G', args.cmake_generator]
           elif (args.arm or args.arm64):
@@ -944,16 +945,19 @@ def main():
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
         if args.android:
+            print("---- ANDROID")
             # Cross-compiling for Android
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
         if is_ubuntu_1604() or is_debian():
+            print("---- LINUX", is_ubuntu_1604(), is_debian())
             if (args.arm or args.arm64):
                 raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
             install_ubuntu_deps(args)
             if not is_docker():
                 install_python_deps()
             cmake_extra_args += ['-fPIC']
-        if (args.enable_pybind and is_windows()):
+        if (args.enable_pybind):
+            print("---- PYTHON")
             install_python_deps(args.numpy_version)
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
