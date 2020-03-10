@@ -65,6 +65,7 @@ to convert other model formats into ONNX. Here we will use
 
     initial_type = [('float_input', FloatTensorType([None, 4]))]
     onx = convert_sklearn(clr, initial_types=initial_type)
+    onx.ir_version = 6
     with open("logreg_iris.onnx", "wb") as f:
         f.write(onx.SerializeToString())
 
