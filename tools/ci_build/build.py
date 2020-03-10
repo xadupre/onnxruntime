@@ -263,7 +263,7 @@ def install_python_deps(numpy_version=""):
     dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.18.0')
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
-    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
+    # run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
     if not os.path.exists(filename):
