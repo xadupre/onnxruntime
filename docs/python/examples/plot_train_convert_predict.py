@@ -56,6 +56,7 @@ from skl2onnx.common.data_types import FloatTensorType
 
 initial_type = [('float_input', FloatTensorType([None, 4]))]
 onx = convert_sklearn(clr, initial_types=initial_type)
+onx.ir_version = 6
 with open("logreg_iris.onnx", "wb") as f:
     f.write(onx.SerializeToString())
 
@@ -174,6 +175,7 @@ rf.fit(X_train, y_train)
 
 initial_type = [('float_input', FloatTensorType([1, 4]))]
 onx = convert_sklearn(rf, initial_types=initial_type)
+onx.ir_version = 6
 with open("rf_iris.onnx", "wb") as f:
     f.write(onx.SerializeToString())
 
@@ -202,6 +204,7 @@ for n_trees in range(5, 51, 5):
     rf.fit(X_train, y_train)
     initial_type = [('float_input', FloatTensorType([1, 4]))]
     onx = convert_sklearn(rf, initial_types=initial_type)
+    onx.ir_version = 6
     with open("rf_iris_%d.onnx" % n_trees, "wb") as f:
         f.write(onx.SerializeToString())
     sess = rt.InferenceSession("rf_iris_%d.onnx" % n_trees)
