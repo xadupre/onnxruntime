@@ -63,6 +63,7 @@ from skl2onnx.common.data_types import FloatTensorType, Int64TensorType, Diction
 # initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
 initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
 onx = convert_sklearn(pipe, initial_types=initial_type)
+onx.ir_version = 6
 with open("pipeline_vectorize.onnx", "wb") as f:
     f.write(onx.SerializeToString())
 
