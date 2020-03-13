@@ -61,5 +61,5 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
   return Status::OK();
 }
 
-}  // namespace ml
+}  // namespace onnxruntime
 }  // namespace onnxruntime
