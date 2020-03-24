@@ -15,6 +15,7 @@ from keras.layers import Layer, Conv2D, MaxPooling2D
 
 
 class ScaledTanh(Layer):
+
     def __init__(self, alpha=1.0, beta=1.0, **kwargs):
         super(ScaledTanh, self).__init__(**kwargs)
         self.alpha = alpha
@@ -32,8 +33,12 @@ class ScaledTanh(Layer):
 
 def custom_activation(scope, operator, container):
     # type:(ScopeBase, OperatorBase, ModelContainer) -> None
-    container.add_node('ScaledTanh', operator.input_full_names, operator.output_full_names,
-                       op_version=1, alpha=operator.original_operator.alpha, beta=operator.original_operator.beta)
+    container.add_node('ScaledTanh',
+                       operator.input_full_names,
+                       operator.output_full_names,
+                       op_version=1,
+                       alpha=operator.original_operator.alpha,
+                       beta=operator.original_operator.beta)
 
 
 class TestInferenceSessionKeras(unittest.TestCase):
@@ -49,8 +54,13 @@ class TestInferenceSessionKeras(unittest.TestCase):
         except RuntimeError:
             # due to tensorflow 2.0
             return
-        model.add(Conv2D(2, kernel_size=(1, 2), strides=(1, 1), padding='valid', input_shape=(H, W, C),
-                         data_format='channels_last'))
+        model.add(
+            Conv2D(2,
+                   kernel_size=(1, 2),
+                   strides=(1, 1),
+                   padding='valid',
+                   input_shape=(H, W, C),
+                   data_format='channels_last'))
         model.add(ScaledTanh(0.9, 2.0))
         model.add(MaxPooling2D((2, 2), strides=(2, 2), data_format='channels_last'))
 
@@ -61,7 +71,7 @@ class TestInferenceSessionKeras(unittest.TestCase):
         # conversion
         converted_model = onnxmltools.convert_keras(model, custom_conversion_functions={ScaledTanh: custom_activation})
         self.assertIsNotNone(converted_model)
-        
+
         # runtime
         content = converted_model.SerializeToString()
         rt = onnxrt.InferenceSession(content)
