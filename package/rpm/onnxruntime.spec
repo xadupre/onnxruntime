@@ -1,5 +1,5 @@
 Name:           onnxruntime
-Version:        1.2.995
+Version:        1.2.996
 Release:        1%{?dist}
 Summary:        onnxruntime
 
