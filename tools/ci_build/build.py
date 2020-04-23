@@ -416,7 +416,7 @@ def install_ubuntu_deps(args):
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel', 'pytest']
     dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version
-                        else 'numpy>=1.18.0')
+                        else 'numpy>=1.16.6')
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
     # run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
@@ -528,7 +528,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not args.use_dnnlibrary and
-            not args.use_mklml and not args.use_ngraph else "OFF"),
+            not args.use_mklml and not args.use_ngraph and not args.android else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
