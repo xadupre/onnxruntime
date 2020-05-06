@@ -153,6 +153,10 @@ def parse_arguments():
     parser.add_argument(
         "--skip-keras-test", action='store_true',
         help="Skip tests with Keras if keras is installed")
+    parser.add_argument(
+        "--skip-onnx-pytest", action='store_true',
+        help="""When running the Test phase, run python test against
+        available test data directories.""")
 
     # C-Sharp bindings
     parser.add_argument(
@@ -1139,7 +1143,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                     run_subprocess(
                         [os.path.join(cwd, 'onnx_test_runner'), 'test_models'],
                         cwd=cwd)
-                if config != 'Debug':
+                if config != 'Debug' and not args.skip_onnx_pytest:
                     run_subprocess(
                         [sys.executable, 'onnx_backend_test_series.py'],
                         cwd=cwd, dll_path=dll_path)
