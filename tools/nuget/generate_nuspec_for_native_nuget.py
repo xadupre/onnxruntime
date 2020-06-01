@@ -184,7 +184,8 @@ def generate_files(list, args):
         # Add custom operator headers
         files_list.append('<file src=' + '"' +
                           os.path.join(args.sources_path,
-                                       'onnxruntime\\core\\providers\\dml\\dmlexecutionprovider\\inc\\mloperatorauthor.h') +
+                                       'onnxruntime\\core\\providers\\dml\\dmlexecutionprovider'
+                                       '\\inc\\mloperatorauthor.h') +
                           '" target="build\\native\\include" />')
 
     # Process runtimes
@@ -277,7 +278,8 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + target_props + '" target="build\\netstandard1.1" />')
 
         # Process targets file
-        source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets.xml')
+        source_targets = os.path.join(
+            args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets.xml')
         target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
                                       args.package_name + '.targets')
         os.system('copy ' + source_targets + ' ' + target_targets)
@@ -285,7 +287,8 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard1.1" />')
 
     # Process License, ThirdPartyNotices, Privacy, README
-    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'LICENSE.txt') + '" target="LICENSE.txt" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'LICENSE.txt') +
+                      '" target="LICENSE.txt" />')
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'ThirdPartyNotices.txt') +
                       '" target="ThirdPartyNotices.txt" />')
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'Privacy.md') +
