@@ -46,49 +46,32 @@ class TestBackend(unittest.TestCase):
         model = load(name)
 
         rep = backend.prepare(model)
-        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0],
+                      [7.0, 8.0]], dtype=np.float32).reshape((-1, 4))
         res = rep.run(x)
-        output_expected = np.array([0, 0, 0], dtype=np.float32)
+        output_expected = np.array([2, 2], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-        output_expected = [{
-            0: 0.950599730014801,
-            1: 0.027834169566631317,
-            2: 0.02156602405011654
-        }, {
-            0: 0.9974970817565918,
-            1: 5.6299926654901356e-05,
-            2: 0.0024466661270707846
-        }, {
-            0: 0.9997311234474182,
-            1: 1.1918064757310276e-07,
-            2: 0.00026869276189245284
-        }]
-
+        output_expected = [
+            {0: 0.1022685095667839, 1: 0.01814863830804825,
+             2: 0.8795828223228455},
+            {0: 3.6572727810622874e-13, 1: 2.1704063546401642e-10, 2: 1.0}]
         check_list_of_map_to_float(self, output_expected, res[1])
 
     def testRunModelProtoApi(self):
         name = datasets.get_example("logreg_iris.onnx")
         model = load(name)
 
-        inputs = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        inputs = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0],
+                           [7.0, 8.0]], dtype=np.float32).reshape((-1, 4))
         outputs = ort_backend.run_model(model, inputs)
 
-        output_expected = np.array([0, 0, 0], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, outputs[0], rtol=1e-05, atol=1e-08)
-        output_expected = [{
-            0: 0.950599730014801,
-            1: 0.027834169566631317,
-            2: 0.02156602405011654
-        }, {
-            0: 0.9974970817565918,
-            1: 5.6299926654901356e-05,
-            2: 0.0024466661270707846
-        }, {
-            0: 0.9997311234474182,
-            1: 1.1918064757310276e-07,
-            2: 0.00026869276189245284
-        }]
-
+        output_expected = np.array([2, 2], dtype=np.float32)
+        np.testing.assert_allclose(
+            output_expected, outputs[0], rtol=1e-05, atol=1e-08)
+        output_expected = [
+            {0: 0.1022685095667839, 1: 0.01814863830804825,
+             2: 0.8795828223228455},
+            {0: 3.6572727810622874e-13, 1: 2.1704063546401642e-10, 2: 1.0}]
         check_list_of_map_to_float(self, output_expected, outputs[1])
 
 if __name__ == '__main__':
