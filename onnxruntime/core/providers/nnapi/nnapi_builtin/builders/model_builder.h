@@ -5,19 +5,30 @@
 #include <onnx/onnx_pb.h>
 #include <unordered_set>
 
+#include <core/graph/graph_viewer.h>
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
-#include "op_builder.h"
 #include "shaper.h"
 
 namespace onnxruntime {
 namespace nnapi {
 
+class IOpBuilder;
+
 class ModelBuilder {
  public:
   using Shape = Shaper::Shape;
 
-  ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto);
+  enum class TargetDeviceOption : int8_t {
+    ALL_DEVICES,  // use all avaliable target devices
+    /* TODO support this option
+    SINGLE_DEVICE,  // use a single target device, must be given
+     */
+    CPU_DISABLED,  // use all avaliable target devices except CPU
+    CPU_ONLY,      // use CPU only
+  };
+
+  ModelBuilder(const GraphViewer& graph_view);
   ~ModelBuilder() = default;
 
   std::vector<std::vector<int>> GetSupportedNodes();
@@ -29,10 +40,11 @@ class ModelBuilder {
   // Add an NNAPI operation (operator)
   void AddOperation(int op, const std::vector<uint32_t>& input_indices,
                     const std::vector<std::string>& output_names,
-                    const std::vector<android::nn::wrapper::OperandType>& types);
+                    const std::vector<android::nn::wrapper::OperandType>& types,
+                    const std::vector<bool>& is_nhwc_vec);
 
   // Find if an output has a fuseable activation (Relu)
-  int32_t FindActivation(const std::string& output);
+  int32_t FindActivation(const Node& node, const NodeArg& output);
 
   // Add an NNAPI scalar operand
   uint32_t AddOperandFromScalar(bool value);
@@ -48,7 +60,8 @@ class ModelBuilder {
 
   // Register informations for a particular operand
   void RegisterOperand(const std::string& name, uint32_t index,
-                       const android::nn::wrapper::OperandType& operand_type);
+                       const android::nn::wrapper::OperandType& operand_type,
+                       bool is_nhwc);
 
   // Generate an unique name for intermediate result
   std::string GetUniqueName(const std::string& base_name);
@@ -78,20 +91,31 @@ class ModelBuilder {
   const std::unordered_set<std::string>&
   GetFusedActivations() const { return fused_activations_; }
 
-  const std::unordered_map<std::string,
-                           const ONNX_NAMESPACE::TensorProto&>&
+  const std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>&
   GetInitializerTensors() const { return initializers_; }
 
-  const ONNX_NAMESPACE::ModelProto& GetOnnxModel() const { return model_proto_; }
+  const Graph& GetOnnxGraph() const { return graph_view_.GetGraph(); }
+
+  void RegisterNHWCOperand(const std::string& name);
+  bool IsOperandNHWC(const std::string& name);
+
+  // Get the operand transposed to nchw/nhwc from given nhwc/nchw operand, if it exists
+  bool GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name);
+  bool GetNHWCOperand(const std::string& nchw_name, std::string& nhwc_name);
+
+  void SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
+                               const std::string& nchw_name);
+  void SetNCHWToNHWCOperandMap(const std::string& nchw_name,
+                               const std::string& nhwc_name);
 
  private:
   const NnApi* nnapi_{nullptr};
-  ONNX_NAMESPACE::ModelProto& model_proto_;
+  const GraphViewer& graph_view_;
   std::unique_ptr<Model> nnapi_model_;
 
   uint32_t name_token_{0};
 
-  bool use_nchw_{true};
+  bool use_nchw_{false};
   bool use_fp16_{false};
   android::nn::wrapper::ExecutePreference exe_pref_{
       android::nn::wrapper::ExecutePreference::PREFER_FAST_SINGLE_ANSWER};
@@ -109,18 +133,29 @@ class ModelBuilder {
 
   std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_builders_;
 
+  // Operands in nhwc
+  std::unordered_set<std::string> nhwc_operands_;
+
+  // Maps between nhwc and nchw, and vice versa
+  std::unordered_map<std::string, std::string> nhwc_to_nchw_map_;
+  std::unordered_map<std::string, std::string> nchw_to_nhwc_map_;
+
   std::vector<uint32_t> input_index_vec_;
   std::vector<uint32_t> output_index_vec_;
 
   std::unordered_set<std::string> unique_names_;
 
+  TargetDeviceOption target_device_option_{TargetDeviceOption::ALL_DEVICES};
+  std::vector<ANeuralNetworksDevice*> nnapi_target_devices_;
+
   uint32_t next_index_ = 0;
 
-  bool IsNodeSupported(const ONNX_NAMESPACE::NodeProto& node);
+  bool IsNodeSupported(const Node& node);
 
   // Convert the onnx model to ANeuralNetworksModel
   void Prepare();
 
+  void GetTargetDevices();
   void GetAllInitializers();
   void PreprocessInitializers();
   void RegisterInitializers();
@@ -134,9 +169,10 @@ class ModelBuilder {
 
   uint32_t AddNewNNAPIOperand(const android::nn::wrapper::OperandType& type);
   uint32_t AddNewOperand(const std::string& name,
-                         const android::nn::wrapper::OperandType& operand_type);
+                         const android::nn::wrapper::OperandType& operand_type,
+                         bool is_nhwc);
 
-  IOpBuilder* GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node);
+  IOpBuilder* GetOpBuilder(const Node& node);
 };
 
 }  // namespace nnapi
