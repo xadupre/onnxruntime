@@ -495,6 +495,14 @@ def install_python_deps(numpy_version=""):
     #                 'files.pythonhosted.org'] + dep_packages)
 
 
+# We need to install Torch to test certain functionalities of the ORT Python package
+def install_torch():
+    # Command works for both Windows
+    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
+                    'files.pythonhosted.org', 'torch===1.5.1+cu101', 'torchvision===0.6.1+cu101',
+                    '-f', 'https://download.pytorch.org/whl/torch_stable.html'])
+
+
 def check_md5(filename, expected_md5):
     if not os.path.exists(filename):
         return False
@@ -1091,12 +1099,8 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             run_subprocess(cmd_args)
 
 
-def adb_push(source_dir, src, dest, **kwargs):
-    return run_subprocess(
-        [os.path.join(
-            source_dir, 'tools', 'ci_build',
-            'github', 'android', 'adb-push.sh'),
-         src, dest], **kwargs)
+def adb_push(src, dest, **kwargs):
+    return run_subprocess(['adb', 'push', src, dest], **kwargs)
 
 
 def adb_shell(*args, **kwargs):
@@ -1106,6 +1110,15 @@ def adb_shell(*args, **kwargs):
 def run_training_python_frontend_tests(cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
     run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_list_input'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_dict_input'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1125,15 +1138,23 @@ def run_training_python_frontend_e2e_tests(cwd):
         [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'],
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
+    run_subprocess(
+        [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_roberta_with_mrpc', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
+    run_subprocess(
+        [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_roberta_fp16_with_mrpc', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
+    run_subprocess(
+        [sys.executable, 'orttraining_run_multiple_choice.py', 'ORTMultipleChoiceTest.test_bert_fp16_with_swag', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd)
 
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_mixed_precision_all'], cwd=cwd)
-
-    run_subprocess([
-        sys.executable, 'orttraining_test_transformers.py',
-        'BertModelTest.test_for_pretraining_full_precision_all'], cwd=cwd)
 
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
@@ -1153,17 +1174,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(os.path.join(
                 source_dir, 'tools', 'ci_build', 'github', 'android',
                 'start_android_emulator.sh'))
-            adb_push(source_dir, 'testdata', '/data/local/tmp/', cwd=cwd)
+            adb_push('testdata', '/data/local/tmp/', cwd=cwd)
             adb_push(
-                source_dir,
-                os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx',
-                             'backend', 'test'),
+                os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
                 '/data/local/tmp/', cwd=cwd)
-            adb_push(
-                source_dir, 'onnxruntime_test_all', '/data/local/tmp/',
-                cwd=cwd)
-            adb_push(
-                source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
+            adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
+            adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
             adb_shell(
                 'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
             if args.use_dnnlibrary or args.use_nnapi:
@@ -1223,10 +1239,19 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, 'onnxruntime_test_python.py'],
                 cwd=cwd, dll_path=dll_path)
 
-            iobinding_test = False
             # For CUDA enabled builds test IOBinding feature
-            if args.use_cuda:
+            # Limit testing to Windows non-ARM builds for now
+            iobinding_test = False
+            if args.use_cuda and not (args.arm or args.arm64):
+                # We need to have Torch installed to test the IOBinding feature
+                # which currently uses Torch's allocator to allocate GPU memory for testing
                 iobinding_test = True
+
+                # Try install Torch on Windows
+                if is_windows():
+                    log.info("Attempting to install Torch to test ORT's IOBinding feature")
+                    install_torch()
+
                 try:
                     import torch  # noqa
                 except ImportError as error:
@@ -1237,6 +1262,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         "The IOBinding tests will be skipped as it requires Torch.")
 
             if iobinding_test:
+                log.info("Testing IOBinding feature")
                 run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_ml_ops:
