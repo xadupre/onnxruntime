@@ -74,15 +74,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<CastElimination>());
       rule_transformer->Register(make_unique<NonZeroShapeSetter>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
-      if (config.gelu_recompute) {
-        rule_transformer->Register(make_unique<GeluRecompute>());
-      }
-      if (config.attn_dropout_recompute) {
-        rule_transformer->Register(make_unique<AttentionDropoutRecompute>());
-      }
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
 
 #ifdef USE_CUDA
@@ -106,8 +101,15 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       }
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
 
+      if (config.gelu_recompute) {
+        transformers.emplace_back(onnxruntime::make_unique<GeluRecompute>());
+      }
+      if (config.attn_dropout_recompute) {
+        transformers.emplace_back(onnxruntime::make_unique<AttentionDropoutRecompute>());
+      }
       if (config.transformer_layer_recompute) {
-        transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(compatible_eps));
+        transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(
+            config.number_recompute_layers, compatible_eps));
       }
     } break;
 
