@@ -265,8 +265,6 @@ def parse_arguments():
     parser.add_argument(
         "--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument(
-        "--use_mklml", action='store_true', help="Build with MKLML.")
-    parser.add_argument(
         "--use_featurizers", action='store_true',
         help="Build with ML Featurizer support.")
     parser.add_argument(
@@ -354,6 +352,10 @@ def parse_arguments():
         choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002"],
         help="Build with ACL for ARM architectures.")
     parser.add_argument(
+        "--acl_home", help="Path to ACL home dir")
+    parser.add_argument(
+        "--acl_libs", help="Path to ACL libraries")
+    parser.add_argument(
         "--use_armnn", action='store_true',
         help="Enable ArmNN Execution Provider.")
     parser.add_argument(
@@ -362,6 +364,10 @@ def parse_arguments():
     parser.add_argument(
         "--armnn_bn", action='store_true',
         help="Use the Batch Normalization operator implementation from the ArmNN EP.")
+    parser.add_argument(
+        "--armnn_home", help="Path to ArmNN home dir")
+    parser.add_argument(
+        "--armnn_libs", help="Path to ArmNN libraries")
     parser.add_argument(
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
@@ -589,7 +595,7 @@ def use_dev_mode(args):
 
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
-                        mpi_home, nccl_home, tensorrt_home, migraphx_home,
+                        mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
@@ -628,13 +634,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "OFF" if args.use_openblas else "ON"),
         "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
-        "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
         "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
-                args.use_nnapi or (args.use_mklml and (is_macOS() or is_windows())) or args.use_ngraph or
+                args.use_nnapi or args.use_ngraph or
                 args.android or (args.ios and is_macOS())
                 or args.use_rknpu)
             else "OFF"),
@@ -698,6 +703,18 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
             "ON" if args.build_micro_benchmarks else "OFF")
     ]
+
+    if acl_home and os.path.exists(acl_home):
+        cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
+
+    if acl_libs and os.path.exists(acl_libs):
+        cmake_args += ["-Donnxruntime_ACL_LIBS=" + acl_libs]
+
+    if armnn_home and os.path.exists(armnn_home):
+        cmake_args += ["-Donnxruntime_ARMNN_HOME=" + armnn_home]
+
+    if armnn_libs and os.path.exists(armnn_libs):
+        cmake_args += ["-Donnxruntime_ARMNN_LIBS=" + armnn_libs]
 
     if mpi_home and os.path.exists(mpi_home):
         cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
@@ -1317,8 +1334,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 build_dir, config, "external", "tvm", config))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
-        if args.use_mklml:
-            dll_path_list.append(os.path.join(build_dir, config, "mklml", "src", "project_mklml", "lib"))
         if not is_windows():
             # A workaround for making libonnxruntime_providers_shared.so loadable.
             dll_path_list.append(os.path.join(build_dir, config))
@@ -1518,7 +1533,7 @@ def derive_linux_build_property():
         return "/p:IsLinuxBuild=\"true\""
 
 
-def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_mklml):
+def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1541,8 +1556,6 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.DNNL\""
     elif use_cuda:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
-    elif use_mklml:
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.MKLML\""
     else:
         pass
 
@@ -1783,6 +1796,12 @@ def main():
     mpi_home = args.mpi_home
     nccl_home = args.nccl_home
 
+    acl_home = args.acl_home
+    acl_libs = args.acl_libs
+
+    armnn_home = args.armnn_home
+    armnn_libs = args.armnn_libs
+
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = setup_tensorrt_vars(args)
 
@@ -1882,8 +1901,8 @@ def main():
             setup_test_data(build_dir, configs)
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, mpi_home, nccl_home,
-            tensorrt_home, migraphx_home, path_to_protoc_exe, configs, cmake_extra_defines,
-            args, cmake_extra_args)
+            tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
+            path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args)
 
     if args.clean:
         clean_targets(cmake_path, build_dir, configs)
@@ -1937,8 +1956,7 @@ def main():
                 args.use_cuda,
                 args.use_openvino,
                 args.use_tensorrt,
-                args.use_dnnl,
-                args.use_mklml
+                args.use_dnnl
             )
 
     if args.test and args.build_nuget:
