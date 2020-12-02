@@ -357,7 +357,7 @@ void NoTransposeReduce(Tensor* output, const TensorShape& new_input_shape, const
 
   if (!last_results.equal(new_input_shape.GetDims(), reduced_axes)) {
     NoTransposePrepareForReduce(new_input_shape, reduced_axes, last_results);
-    if (last_results.last_loop_red_size == 0)
+    if (last_results.last_loop_red_size == 0 || last_results.last_loop_size == 0)
       return;
   }
   ORT_ENFORCE(last_results.last_loop_red_size > 0);
