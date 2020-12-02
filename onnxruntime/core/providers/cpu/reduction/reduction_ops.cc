@@ -362,6 +362,7 @@ void NoTransposeReduce(Tensor* output, const TensorShape& new_input_shape, const
   }
   ORT_ENFORCE(last_results.last_loop_red_size > 0);
   ORT_ENFORCE(last_results.last_loop_size > 0);
+  ORT_ENFORCE(last_results.projected_index.size() > 0);
   int64_t denominator = last_results.last_loop_red_size * last_results.projected_index.size();
 
   if (AGG::two_loops()) {
