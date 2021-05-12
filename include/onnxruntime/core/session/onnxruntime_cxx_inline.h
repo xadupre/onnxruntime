@@ -330,7 +330,7 @@ inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction loggin
     ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
   }
 }
-
+#if defined(ORT_TELEMETRY)
 inline Env& Env::EnableTelemetryEvents() {
   ThrowOnError(GetApi().EnableTelemetryEvents(p_));
   return *this;
@@ -340,6 +340,7 @@ inline Env& Env::DisableTelemetryEvents() {
   ThrowOnError(GetApi().DisableTelemetryEvents(p_));
   return *this;
 }
+#endif
 
 inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg) {
   ThrowOnError(GetApi().CreateAndRegisterAllocator(p_, mem_info, arena_cfg));

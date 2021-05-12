@@ -1123,8 +1123,10 @@ common::Status InferenceSession::Initialize() {
 
   ORT_TRY {
     LOGS(*session_logger_, INFO) << "Initializing session.";
+#if defined(ORT_TELEMETRY)
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart();
+#endif
 
     bool have_cpu_ep = false;
 
@@ -1294,12 +1296,14 @@ common::Status InferenceSession::Initialize() {
     std::vector<uint8_t>().swap(ort_format_model_bytes_);
 
     // and log telemetry
-    bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+    /*bool model_has_fp16_inputs = */ModelHasFP16Inputs(graph);
+#if defined(ORT_TELEMETRY)
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
+#endif
   }
   ORT_CATCH(const NotImplementedException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -1592,9 +1596,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
   TraceLoggingActivity<telemetry_provider_handle> ortrun_activity;
   ortrun_activity.SetRelatedActivity(session_activity);
   TraceLoggingWriteStart(ortrun_activity, "OrtRun");
+  const Env& env = Env::Default();
 #endif
   Status retval = Status::OK();
-  const Env& env = Env::Default();
 
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -1608,7 +1612,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
     }
 
     // log evaluation start to trace logging provider
+#if defined(ORT_TELEMETRY)
     env.GetTelemetryProvider().LogEvaluationStart();
+#endif
 
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
@@ -1693,6 +1699,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   --current_num_runs_;
 
   // keep track of telemetry
+#if defined(ORT_TELEMETRY)
   ++telemetry_.total_runs_since_last_;
   telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
 
@@ -1709,6 +1716,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
   // log evaluation stop to trace logging provider
   env.GetTelemetryProvider().LogEvaluationStop();
+#endif
 
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {

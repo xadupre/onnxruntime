@@ -934,12 +934,14 @@ void addGlobalMethods(py::module& m, Environment& env) {
       "Return list of available Execution Providers available in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
+#if defined(ORT_TELEMETRY)
   m.def(
       "enable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().EnableTelemetryEvents(); },
       "Enables platform-specific telemetry collection where applicable.");
   m.def(
       "disable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().DisableTelemetryEvents(); },
       "Disables platform-specific telemetry collection.");
+#endif
   m.def(
       "create_and_register_allocator", [&env](const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr) -> void {
         auto st = env.CreateAndRegisterAllocator(mem_info, arena_cfg);

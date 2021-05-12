@@ -256,8 +256,10 @@ struct Env : Base<OrtEnv> {
       OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
+#if defined(ORT_TELEMETRY)
   Env& EnableTelemetryEvents();
   Env& DisableTelemetryEvents();
+#endif
 
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);
 
