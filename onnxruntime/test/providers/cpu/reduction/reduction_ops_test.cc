@@ -3914,5 +3914,104 @@ TEST(ReductionOpTest, ReduceSum_RKRK_keepdims) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ArgMax_KR) {
+  OpTester test("ArgMax");
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {4, 3},
+                       {1.0f, 2.0f, 3.0f,
+                        4.0f, 5.0f, 6.0f,
+                        7.0f, 8.0f, 9.0f,
+                        10.0f, 11.0f, 12.0f});
+  test.AddOutput<int64_t>("reduced", {4}, {2, 2, 2, 2});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ArgMax_KR_keepdims) {
+  OpTester test("ArgMax");
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f});
+  test.AddOutput<int64_t>("reduced", {3, 1}, {3, 3, 3});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ArgMax_RK) {
+  OpTester test("ArgMax");
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f});
+  test.AddOutput<int64_t>("reduced", {4}, {2, 2, 2, 2});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ArgMax_RK_keepdims) {
+  OpTester test("ArgMax");
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f});
+  test.AddOutput<int64_t>("reduced", {1, 4}, {2, 2, 2, 2});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ArgMax_RK_parallel) {
+  OpTester test("ArgMax");
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+  test.AddAttribute("keepdims", (int64_t)0);
+  std::vector<float> in_data(128);
+  for (size_t i = 0; i < in_data.size(); ++i)
+    in_data[i] = (float)i;
+  test.AddInput<float>("data", {4, 32}, in_data);
+  std::vector<int64_t> expected(32);
+  for (size_t i = 0; i < expected.size(); ++i) {
+    expected[i] = 3;
+  }
+  test.AddOutput<int64_t>("reduced", {32}, expected);
+  test.Run();
+}
+
+TEST(ReductionOpTest, ArgMax_KRK) {
+  OpTester test("ArgMax");
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<int64_t>("reduced", {3, 2}, {1, 1, 1, 1, 1, 1});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ArgMax_KRK_keepdims) {
+  OpTester test("ArgMax");
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<int64_t>("reduced", {3, 1, 2}, {1, 1, 1, 1, 1, 1});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

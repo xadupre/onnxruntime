@@ -267,6 +267,14 @@ static void ValidateFastReduceKRK(const std::vector<int64_t>& fast_shape, const 
   ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
 }
 
+static void ValidateFastReduceR(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+  ORT_ENFORCE(fast_shape.size() == 1, "Only works on matrices with one dimension.");
+  ORT_ENFORCE(1 == output.Shape().Size(), "Output size mismatch.");
+}
+
+void ReduceAggregatorBase::FastReduceR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
+  ValidateMustBeOverloaded();
+}
 void ReduceAggregatorBase::FastReduceKR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
   ValidateMustBeOverloaded();
 }
@@ -666,6 +674,7 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
                             std::vector<int64_t>& output_shape,
                             std::vector<int64_t>& fast_axes,
                             FastReduceKind which_fast_reduce,
+                            fast_reduce_fct* case_r,
                             fast_reduce_fct* case_kr,
                             fast_reduce_fct* case_rk,
                             fast_reduce_fct* case_krk) {
@@ -700,7 +709,11 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
           case_krk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
           return true;
         }
-        case FastReduceKind::kR:
+        case FastReduceKind::kR: {
+          ValidateFastReduceR(fast_shape, *output);
+          case_r(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
+          return true;
+        }
         case FastReduceKind::kK:
         case FastReduceKind::kNone:
         default:
@@ -722,7 +735,9 @@ bool CommonFastReduce(OpKernelContext* ctx,
                       std::vector<int64_t>& output_shape,
                       std::vector<int64_t>& fast_axes) {
   return CommonFastReduceSwitch(ctx, axes_, keepdims_, noop_with_empty_axes, fast_kind, fast_shape, output_shape, fast_axes,
-                                AGG::WhichFastReduce(), &AGG::FastReduceKR, &AGG::FastReduceRK, &AGG::FastReduceKRK);
+                                AGG::WhichFastReduce(),
+                                &AGG::FastReduceR, &AGG::FastReduceKR,
+                                &AGG::FastReduceRK, &AGG::FastReduceKRK);
 }
 
 static void ValidateKeepDims(const TensorShape& shape, int64_t keepdims) {
@@ -734,6 +749,25 @@ static void ValidateKeepDims(const TensorShape& shape, int64_t keepdims) {
 
 static void ValidateKeepDims(const Tensor* input, int64_t keepdims) {
   ValidateKeepDims(input->Shape(), keepdims);
+}
+
+static void ValidateAxisHandled() {
+  ORT_THROW("Reduction on one axis should be handled with cases KR, RK, KRK.");
+}
+
+template <typename AGG>
+void CommonReduce1Loop1Axis(OpKernelContext* ctx,
+                            const std::vector<int64_t>& axes_, int64_t keepdims_,
+                            bool noop_with_empty_axes) {
+  FastReduceKind fast_kind;
+  std::vector<int64_t> fast_shape;
+  std::vector<int64_t> output_shape;
+  std::vector<int64_t> fast_axes;
+  if (CommonFastReduce<AGG>(ctx, axes_, keepdims_, noop_with_empty_axes,
+                            fast_kind, fast_shape, output_shape, fast_axes)) {
+    return;
+  }
+  ValidateAxisHandled();
 }
 
 template <typename AGG>
@@ -925,7 +959,7 @@ Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
   if (select_last_index_) {
     CommonReduce1Loop<ReduceAggregatorArgMaxLastIndex<T>>(ctx, axes_, keepdims_);
   } else {
-    CommonReduce1Loop<ReduceAggregatorArgMax<T>>(ctx, axes_, keepdims_);
+    CommonReduce1Loop1Axis<ReduceAggregatorArgMax<T>>(ctx, axes_, keepdims_);
   }
   return Status::OK();
 }

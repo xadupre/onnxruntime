@@ -144,6 +144,7 @@ class ReduceAggregatorBase {
  public:
   // Fast reduction: see OptimizeShapeForFastReduce's comment.
   static inline FastReduceKind WhichFastReduce() { return FastReduceKind::kNone; }
+  static void FastReduceR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*);
   static void FastReduceKR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*);
   static void FastReduceRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*);
   static void FastReduceKRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*);
@@ -398,12 +399,109 @@ class ReduceAggregatorArgMax : public ReduceAggregatorArgMinMax<T, TVAL> {
     }
     ++this->index_;
   }
+
+  // Fast reduction
+  static inline FastReduceKind WhichFastReduce() {
+    return FastReduceKind::kR | FastReduceKind::kKR | FastReduceKind::kRK | FastReduceKind::kKRK;
+  }
+
+  static void FastReduceR(const Tensor& input, const std::vector<int64_t>&,
+                          Tensor& output, concurrency::ThreadPool*) {
+    const T* data = input.Data<T>();
+    TVAL* out = output.MutableData<TVAL>();
+    Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(data, input.Shape().Size()).maxCoeff(out);
+  }
+
+  static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                           Tensor& output, concurrency::ThreadPool* tp) {
+    const T* data = input.Data<T>();
+    TVAL* out = output.MutableData<TVAL>();
+    int64_t stridei = fast_shape[1];
+    concurrency::ThreadPool::TryParallelFor(
+        tp, fast_shape[0], ParallelReduceFastCost(1, stridei, sizeof(T)),
+        [data, stridei, out](std::ptrdiff_t first, std::ptrdiff_t last) {
+          const T* ptr;
+          int64_t index;
+          for (; first < last; ++first) {
+            ptr = data + first * stridei;
+            index = 0;
+            for (int64_t i = 1; i < stridei; ++i) {
+              if (ptr[index] < ptr[i])
+                index = i;
+            }
+            out[first] = index;
+          }
+        });
+  }
+
+  static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                           Tensor& output, concurrency::ThreadPool* tp) {
+    int64_t n_rows = fast_shape[0];
+    int64_t N = fast_shape[1];
+    const T* data = input.Data<T>();
+    TVAL* out = output.MutableData<TVAL>();
+    std::vector<T> best(N);
+
+    concurrency::ThreadPool::TryParallelFor(
+        tp, N, ParallelReduceFastCost(1, n_rows, sizeof(T)),
+        [data, out, N, n_rows, &best](ptrdiff_t begin, ptrdiff_t end) {
+          const T* p;
+          for (int64_t j = begin; j < end; ++j) {
+            out[j] = 0;
+            best[j] = data[j];
+          }
+          for (int64_t row = 1; row < n_rows; ++row) {
+            p = data + row * N;
+            for (int64_t j = begin; j < end; ++j) {
+              if (p[j] > best[j]) {
+                best[j] = p[j];
+                out[j] = row;
+              }
+            }
+          }
+        });
+  }
+
+  static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                            Tensor& output, concurrency::ThreadPool* tp) {
+    const T* data = input.Data<T>();
+    TVAL* out = output.MutableData<TVAL>();
+    int64_t stridei = fast_shape[1] * fast_shape[2];
+    int64_t strideo = fast_shape[2];
+    std::vector<T> best(fast_shape[0] * fast_shape[2]);
+
+    concurrency::ThreadPool::TryParallelFor(
+        tp, fast_shape[0], ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T)),
+        [data, fast_shape, stridei, strideo, out, &best](ptrdiff_t begin, ptrdiff_t end) {
+          const T* p;
+          T* pbest;
+          TVAL* outk;
+          for (; begin < end; ++begin) {
+            outk = out + strideo * begin;
+            pbest = best.data() + begin * strideo;
+            p = data + begin * stridei;
+            for (int64_t j = 0; j < strideo; ++j) {
+              outk[j] = 0;
+              pbest[j] = p[j];
+            }
+            p += strideo;
+            for (int64_t row = 1; row < fast_shape[1]; ++row) {
+              for (int64_t j = 0; j < strideo; ++j, ++p) {
+                if (*p > pbest[j]) {
+                  pbest[j] = *p;
+                  outk[j] = row;
+                }
+              }
+            }
+          }
+        });
+  }
 };
 
 template <typename T, typename TVAL = int64_t>
-class ReduceAggregatorArgMaxLastIndex : public ReduceAggregatorArgMax<T, TVAL> {
+class ReduceAggregatorArgMaxLastIndex : public ReduceAggregatorArgMinMax<T, TVAL> {
  public:
-  inline ReduceAggregatorArgMaxLastIndex(int64_t N, const T& init) : ReduceAggregatorArgMax<T, TVAL>(N, init) {}
+  inline ReduceAggregatorArgMaxLastIndex(int64_t N, const T& init) : ReduceAggregatorArgMinMax<T, TVAL>(N, init) {}
   inline TVAL aggall(const T* from_data) {
     for (int64_t i = 0; i < this->N_; ++i) {
       update(from_data[i]);
@@ -604,6 +702,11 @@ template <typename AGG>
 void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
                              const std::vector<int64_t>& reduced_axes, concurrency::ThreadPool* tp,
                              ResultsNoTransposePrepareForReduce& last_results);
+
+template <typename AGG>
+void CommonReduce1Loop1Axis(OpKernelContext* ctx,
+                            const std::vector<int64_t>& axes_, int64_t keepdims_,
+                            bool noop_with_empty_axes = false);
 
 template <typename AGG>
 void CommonReduce1Loop(OpKernelContext* ctx,
