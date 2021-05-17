@@ -418,18 +418,12 @@ class ReduceAggregatorArgMax : public ReduceAggregatorArgMinMax<T, TVAL> {
     TVAL* out = output.MutableData<TVAL>();
     int64_t stridei = fast_shape[1];
     concurrency::ThreadPool::TryParallelFor(
-        tp, fast_shape[0], ParallelReduceFastCost(1, stridei, sizeof(T)),
+        tp, fast_shape[0], ParallelReduceFastCost(1, stridei, sizeof(T), 6),
         [data, stridei, out](std::ptrdiff_t first, std::ptrdiff_t last) {
           const T* ptr;
-          int64_t index;
           for (; first < last; ++first) {
             ptr = data + first * stridei;
-            index = 0;
-            for (int64_t i = 1; i < stridei; ++i) {
-              if (ptr[index] < ptr[i])
-                index = i;
-            }
-            out[first] = index;
+            Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(ptr, stridei).maxCoeff(out + first);
           }
         });
   }
@@ -443,7 +437,7 @@ class ReduceAggregatorArgMax : public ReduceAggregatorArgMinMax<T, TVAL> {
     std::vector<T> best(N);
 
     concurrency::ThreadPool::TryParallelFor(
-        tp, N, ParallelReduceFastCost(1, n_rows, sizeof(T)),
+        tp, N, ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
         [data, out, N, n_rows, &best](ptrdiff_t begin, ptrdiff_t end) {
           const T* p;
           for (int64_t j = begin; j < end; ++j) {
@@ -471,7 +465,7 @@ class ReduceAggregatorArgMax : public ReduceAggregatorArgMinMax<T, TVAL> {
     std::vector<T> best(fast_shape[0] * fast_shape[2]);
 
     concurrency::ThreadPool::TryParallelFor(
-        tp, fast_shape[0], ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T)),
+        tp, fast_shape[0], ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
         [data, fast_shape, stridei, strideo, out, &best](ptrdiff_t begin, ptrdiff_t end) {
           const T* p;
           T* pbest;
