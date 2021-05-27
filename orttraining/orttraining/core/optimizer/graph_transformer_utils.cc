@@ -33,6 +33,7 @@
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -79,6 +80,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
       rule_transformer->Register(std::make_unique<ExpandElimination>());
       rule_transformer->Register(std::make_unique<CastElimination>());
+      rule_transformer->Register(std::make_unique<NoopElimination>());
       rule_transformer->Register(std::make_unique<DivMulFusion>());
       rule_transformer->Register(std::make_unique<EliminateDropout>());
       rule_transformer->Register(std::make_unique<GemmTransposeFusion>());
@@ -120,7 +122,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
             config.number_recompute_layers, compatible_eps));
       }
       if (config.propagate_cast_ops_config.level >= 0) {
-        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider};
+        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
         transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
                                                                              static_cast<size_t>(config.propagate_cast_ops_config.level),
                                                                              config.propagate_cast_ops_config.allow,

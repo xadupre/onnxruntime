@@ -48,6 +48,7 @@
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -164,6 +165,24 @@ TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
   // Identity's input in subgraph is also graph output. Thus skip.
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 1);
+}
+
+TEST_F(GraphTransformationTests, NoopElimination) {
+  auto model_uri = MODEL_FOLDER "noop-add.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 4);
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<NoopElimination>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
 TEST_F(GraphTransformationTests, DropoutElimination) {
@@ -2944,6 +2963,8 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion1.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion2.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_mismatch.onnx", *logger_, 1);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_multiple_consumers1.onnx", *logger_, 1);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_multiple_consumers2.onnx", *logger_, 1);
 }
 
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
@@ -3756,6 +3777,8 @@ static void RunGatherNDE2EGraph(std::vector<OrtValue>& run_results, const PathSt
     execution_provider = DefaultCpuExecutionProvider();
   else if (provider_type == onnxruntime::kCudaExecutionProvider)
     execution_provider = DefaultCudaExecutionProvider();
+  else if (provider_type == onnxruntime::kRocmExecutionProvider)
+    execution_provider = DefaultRocmExecutionProvider();
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
   Status st;
@@ -3851,6 +3874,8 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
