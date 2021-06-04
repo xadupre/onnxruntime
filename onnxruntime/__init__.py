@@ -21,7 +21,7 @@ __author__ = "Microsoft"
 # the saved exception is raised after device version validation.
 try:
     from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
-        RunOptions, SessionOptions, set_default_logger_severity, enable_telemetry_events, disable_telemetry_events, \
+        RunOptions, SessionOptions, set_default_logger_severity, \
         NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, ExecutionOrder, OrtDevice, SessionIOBinding, \
         OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator
     import_capi_exception = None
