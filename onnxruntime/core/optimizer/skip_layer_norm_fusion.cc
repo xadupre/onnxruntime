@@ -12,7 +12,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // LayerNorm supports limited data types.
-static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
+static constexpr std::array supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
@@ -173,8 +173,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
       if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
           CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType()) &&
-          graph.GetNodeOutputsInGraphOutputs(*p_add1).empty() &&
-          graph.GetNodeOutputsInGraphOutputs(*p_add2).empty()) {
+          !graph.GetNodeProvidesGraphOutput(*p_add1) &&
+          !graph.GetNodeProvidesGraphOutput(*p_add2)) {
         matched_format = Format::Format1;
       }
     }
@@ -191,8 +191,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
         if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
             CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType()) &&
-            graph.GetNodeOutputsInGraphOutputs(*p_add1).empty() &&
-            graph.GetNodeOutputsInGraphOutputs(*p_add2).empty()) {
+            !graph.GetNodeProvidesGraphOutput(*p_add1) &&
+            !graph.GetNodeProvidesGraphOutput(*p_add2)) {
           matched_format = Format::Format2;
         }
       }
