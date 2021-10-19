@@ -432,6 +432,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config.enable_caching = self._enable_grad_acc_optimization
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._debug_options.logging.log_level)
         grad_builder_config.use_memory_efficient_gradient = self._use_memory_efficient_gradient
+
+        # C.OrtModuleGraphBuilder() cannot be pickled.
+        self._graph_builder_training = training
         self._graph_builder = C.OrtModuleGraphBuilder()
 
         # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way
@@ -449,6 +452,23 @@ class GraphExecutionManager(GraphExecutionInterface):
         # between forward calls.
         self._graph_initializers = [param for name, param in self._flattened_module.named_parameters()
                                     if name in self._graph_initializer_names]
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        if '_graph_builder' in state:
+            del state['_graph_builder']
+            state['_graph_builder'] = "TORESTORE"
+        if '_graph_info' in state:
+            del state['_graph_info']
+            state['_graph_info'] = "TORESTORE"
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if self._graph_builder == 'TORESTORE':
+            self._initialize_graph_builder(self._graph_builder_training)
+        if self._graph_info == 'TORESTORE':
+            self._build_graph()
 
     def signal_model_changed(self):
         """Signals the execution manager to re-export the model on the next forward call"""

@@ -94,6 +94,9 @@ class _InputInfo(object):
         self.schema = schema if schema else []
         self.num_positionals = num_positionals
         self.num_expanded_positionals_non_none = num_expanded_positionals_non_none
+        if not isinstance(keyword_names, list):
+            # It must be a list to avoid any pickling issue.
+            raise TypeError("keyword_names must be a list not %r." % type(keyword_names))
         self.keyword_names = keyword_names
 
     def __repr__(self) -> str:
