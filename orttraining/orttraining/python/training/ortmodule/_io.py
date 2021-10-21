@@ -94,6 +94,9 @@ class _InputInfo(object):
         self.schema = schema if schema else []
         self.num_positionals = num_positionals
         self.num_expanded_positionals_non_none = num_expanded_positionals_non_none
+        if not isinstance(keyword_names, list):
+            # It must be a list to avoid any pickling issue.
+            raise TypeError("keyword_names must be a list not %r." % type(keyword_names))
         self.keyword_names = keyword_names
 
     def __repr__(self) -> str:
@@ -538,7 +541,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
                       schema=schema,
                       num_positionals=len(inputs),
                       num_expanded_positionals_non_none=num_expanded_non_none_positional_inputs,
-                      keyword_names=kwargs.keys())
+                      keyword_names=list(kwargs.keys()))
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
