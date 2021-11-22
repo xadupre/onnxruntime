@@ -1568,7 +1568,6 @@ def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumula
     model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.AdamConfig(lr=0.001, max_norm_clip=max_norm_clip)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
-    opset = get_model_opset(trainer._onnx_model)
 
     # Training loop
     actual_loss = []
@@ -1578,6 +1577,8 @@ def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumula
         actual_loss.append(loss.cpu().item())
 
     # Compare legacy vs experimental APIs
+    assert trainer._onnx_model is not None
+    opset = get_model_opset(trainer._onnx_model)
     _test_helpers.assert_model_outputs(expected_loss[opset], actual_loss, rtol=rtol)
 
 
