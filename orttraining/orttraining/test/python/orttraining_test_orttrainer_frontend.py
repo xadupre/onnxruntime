@@ -784,6 +784,10 @@ def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
 
+    import pprint
+    pprint.pprint(options)
+    pprint.pprint(options.__dict__)
+
     # Training loop
     actual_loss = []
     for i in range(total_steps):
