@@ -30,7 +30,7 @@ pytorch_110 = StrictVersion('.'.join(torch.__version__.split('.')[:2])) >= Stric
 
 
 def get_model_opset(model_onnx):
-    for op in model_onnx.graph.opset_import:
+    for op in model_onnx.opset_import:
         if op.domain == '':
             return op.version
     return None
@@ -754,7 +754,8 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches)
 def _recompute_data():
     device_capability_major = torch.cuda.get_device_capability()[0]
     if device_capability_major == 7:    # V100 for Dev machine
-        expected_loss = [10.5598 , 10.4591, 10.3477, 10.2726, 10.1945]
+        expected_loss = {12: [10.5598 , 10.4591, 10.3477, 10.2726, 10.1945],
+                         14: [-5, -5, -5, -5, -5]}
         return [
             (False, False, False, 0, expected_loss),    # no recompute
             (True, False, False, 0, expected_loss),     # attn_dropout recompute
@@ -763,7 +764,8 @@ def _recompute_data():
             (False, False, True, 1, expected_loss),     # transformer_layer recompute with 1 layer
         ]
     elif device_capability_major == 5:  # M60 for CI machines
-        expected_loss = [10.5445, 10.4389, 10.3480, 10.2627, 10.2113]
+        expected_loss = {12: [10.5445, 10.4389, 10.3480, 10.2627, 10.2113],
+                         14: [-6, -6, -5, -5, -5]}
         return [
             (False, False, False, 0, expected_loss),    # no recompute
             (True, False, False, 0, expected_loss),     # attn_dropout recompute
@@ -793,10 +795,6 @@ def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
 
-    import pprint
-    pprint.pprint(options)
-    pprint.pprint(options.__dict__)
-
     # Training loop
     actual_loss = []
     for i in range(total_steps):
@@ -805,8 +803,9 @@ def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers
         actual_loss.append(loss.cpu())
 
     # Compare loss to ground truth computed from current ORTTrainer API
-    _test_helpers.assert_model_outputs(expected_loss, actual_loss, True, rtol=rtol)
     assert trainer._onnx_model is not None
+    opset = get_model_opset(trainer._onnx_model)
+    _test_helpers.assert_model_outputs(expected_loss[opset], actual_loss, True, rtol=rtol)
 
 
 @pytest.mark.parametrize("seed,device,gradient_accumulation_steps,total_steps,expected_loss", [
@@ -1529,8 +1528,8 @@ def _adam_max_norm_clip_data():
             (42, 'cuda', 1.0, 1, 12, {
                 12: [10.647908, 10.144501, 9.672352, 9.306980, 8.956026,
                      8.602655, 8.351079, 8.088144, 7.867220, 7.564082, 7.289846, 7.073726],
-                14: [10.647908, 10.145191, 9.673690, 9.309031, 8.959020,
-                     8.606632, 8.355836, 8.093478, 7.873327, 7.570731, 7.296772, 7.0809422]}),
+                14: [10.697515, 10.229034, 9.765422, 9.428294, 9.080612, 8.715208,
+                     8.459574, 8.169073, 7.940211, 7.654147, 7.390446, 7.166227]}),
         ]
     elif device_capability_major == 5:  # M60 for CI machines (Python Packaging Pipeline)
         return [
@@ -1586,25 +1585,45 @@ def _lamb_max_norm_clip_data():
     device_capability_major = torch.cuda.get_device_capability()[0]
     if device_capability_major == 7:    # V100 for Dev machine
         return [
-            (0, 'cuda', 1.0, 1, 12, [10.592951, 10.487728, 10.422251, 10.350913, 10.244248, 10.213003,\
-                10.129222, 10.095112, 10.035983, 9.974586, 9.909771, 9.874278]),
-            (0, 'cuda', 0.1, 1, 12, [10.592951, 10.452503, 10.349832, 10.245314, 10.106587, 10.046009,\
-                9.934781, 9.875164, 9.792067, 9.704592, 9.617104, 9.563070]),
-            (42, 'cuda', 1.0, 1, 12, [10.647908, 10.566276, 10.476154, 10.406275, 10.311079, 10.240053,\
-                10.196469, 10.113955, 10.117376, 10.013077, 9.930301, 9.893368]),
-            (42, 'cuda', 0.1, 1, 12, [10.647908, 10.531957, 10.405246, 10.302971, 10.176583, 10.075583,\
-                10.005772, 9.897825, 9.875748, 9.748932, 9.642885, 9.586762]),
+            (0, 'cuda', 1.0, 1, 12, {
+                12: [10.592951, 10.487728, 10.422251, 10.350913, 10.244248, 10.213003,
+                     10.129222, 10.095112, 10.035983, 9.974586, 9.909771, 9.874278],
+                14: [10.584141, 10.497192, 10.389251, 10.286045, 10.231354, 10.17018,
+                     10.066779, 10.048138, 9.958029, 9.8908, 9.82965, 9.755484]}),
+            (0, 'cuda', 0.1, 1, 12, {
+                12: [10.592951, 10.452503, 10.349832, 10.245314, 10.106587, 10.046009,
+                     9.934781, 9.875164, 9.792067, 9.704592, 9.617104, 9.563070],
+                14: [10.584141, 10.461154, 10.315399, 10.178979, 10.092329, 9.999928,
+                     9.869949, 9.824564, 9.707565, 9.61643, 9.532847, 9.439593]}),
+            (42, 'cuda', 1.0, 1, 12, {
+                12: [10.647908, 10.566276, 10.476154, 10.406275, 10.311079, 10.240053,
+                     10.196469, 10.113955, 10.117376, 10.013077, 9.930301, 9.893368],
+                14: [10.697515, 10.631279, 10.528757, 10.496689, 10.411219, 10.322109,
+                     10.297314, 10.215549, 10.149698, 10.087336, 10.010884, 9.934544]}),
+            (42, 'cuda', 0.1, 1, 12, {
+                12: [10.647908, 10.531957, 10.405246, 10.302971, 10.176583, 10.075583,
+                     10.005772, 9.897825, 9.875748, 9.748932, 9.642885, 9.586762],
+                14: [10.697515, 10.596729, 10.457815, 10.393475, 10.277581, 10.158909,
+                     10.108126, 10.000326, 9.912526, 9.826057, 9.727899, 9.633768]})
         ]
     elif device_capability_major == 5:  # M60 for CI machines (Python Packaging Pipeline)
         return [
-            (0, 'cuda', 1.0, 1, 12, [10.618382, 10.50222 , 10.403347, 10.35298 , 10.288447, 10.237399,
-                                     10.184225, 10.089048, 10.008952,  9.972644,  9.897674,  9.84524 ]),
-            (0, 'cuda', 0.1, 1, 12, [10.618382, 10.466732, 10.330871, 10.24715 , 10.150972, 10.069127,
-                                     9.98974 ,  9.870169,  9.763693,  9.704323,  9.605957,  9.533117]),
-            (42, 'cuda', 1.0, 1, 12, [10.68639 , 10.511692, 10.447308, 10.405255, 10.334866, 10.261473,
-                                      10.169422, 10.107138, 10.069889,  9.97798 ,  9.928105,  9.896435]),
-            (42, 'cuda', 0.1, 1, 12, [10.68639 , 10.477489, 10.376671, 10.301725, 10.200718, 10.098477,
-                                      9.97995 ,  9.890104,  9.828899,  9.713555,  9.639567,  9.589856]),
+            (0, 'cuda', 1.0, 1, 12, {
+                12: [10.618382, 10.50222, 10.403347, 10.35298, 10.288447, 10.237399,
+                     10.184225, 10.089048, 10.008952, 9.972644, 9.897674, 9.84524],
+                14: [0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4]}),
+            (0, 'cuda', 0.1, 1, 12, {
+                12: [10.618382, 10.466732, 10.330871, 10.24715 , 10.150972, 10.069127,
+                     9.98974 ,  9.870169,  9.763693,  9.704323,  9.605957,  9.533117],
+                14: [1, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4]}),
+            (42, 'cuda', 1.0, 1, 12, {
+                12: [10.68639 , 10.511692, 10.447308, 10.405255, 10.334866, 10.261473,
+                     10.169422, 10.107138, 10.069889, 9.97798, 9.928105, 9.896435],
+                14: [2, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4]}),
+            (42, 'cuda', 0.1, 1, 12, {
+                12: [10.68639 , 10.477489, 10.376671, 10.301725, 10.200718, 10.098477,
+                     9.97995 ,  9.890104,  9.828899,  9.713555,  9.639567,  9.589856],
+                14: [3, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4]}),
         ]
 @pytest.mark.parametrize("seed,device,max_norm_clip, gradient_accumulation_steps,total_steps,expected_loss", _lamb_max_norm_clip_data())
 def testORTTrainerLambMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps, total_steps, expected_loss):
@@ -1628,4 +1647,5 @@ def testORTTrainerLambMaxNormClip(seed, device, max_norm_clip, gradient_accumula
         actual_loss.append(loss.cpu().item())
 
     # Compare legacy vs experimental APIs
-    _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=rtol)
+    opset = get_model_opset(trainer._onnx_model)
+    _test_helpers.assert_model_outputs(expected_loss[opset], actual_loss, rtol=rtol)
