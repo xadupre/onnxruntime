@@ -755,7 +755,7 @@ def _recompute_data():
     device_capability_major = torch.cuda.get_device_capability()[0]
     if device_capability_major == 7:    # V100 for Dev machine
         expected_loss = {12: [10.5598, 10.4591, 10.3477, 10.2726, 10.1945],
-                         14: [-5, -5, -5, -5, -5]}
+                         14: [10.54088, 10.498755, 10.386827, 10.338747, 10.262459]}
         return [
             (False, False, False, 0, expected_loss),    # no recompute
             (True, False, False, 0, expected_loss),     # attn_dropout recompute
@@ -765,7 +765,7 @@ def _recompute_data():
         ]
     elif device_capability_major == 5:  # M60 for CI machines
         expected_loss = {12: [10.5445, 10.4389, 10.3480, 10.2627, 10.2113],
-                         14: [-6, -6, -5, -5, -5]}
+                         14: [10.5445, 10.4389, 10.3480, 10.2627, 10.2113]}
         return [
             (False, False, False, 0, expected_loss),    # no recompute
             (True, False, False, 0, expected_loss),     # attn_dropout recompute
