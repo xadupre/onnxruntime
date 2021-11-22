@@ -29,6 +29,13 @@ from onnxruntime.training import PropagateCastOpsStrategy
 pytorch_110 = StrictVersion('.'.join(torch.__version__.split('.')[:2])) >= StrictVersion('1.10.0')
 
 
+def get_model_opset(model_onnx):
+    for op in model_onnx.graph.opset_import:
+        if op.domain == '':
+            return op.version
+    return None
+
+
 @pytest.mark.parametrize("test_input", [
     ({}),
     ({'batch': {},
@@ -624,6 +631,8 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values, device)
             assert input_type == _utils.dtype_onnx_to_torch(
                 trainer._onnx_model.graph.input[i].type.tensor_type.elem_type)
 
+    opset = get_model_opset(trainer._onnx_model)
+
     # Check name, shape and dtype of the ORT graph outputs
     for i in range(len(trainer.model_desc.outputs)):
         output_name = trainer.model_desc.outputs[i][0]
@@ -632,7 +641,8 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values, device)
 
         assert trainer._onnx_model.graph.output[i].name == output_name
         for dim_idx, dim in enumerate(trainer._onnx_model.graph.output[i].type.tensor_type.shape.dim):
-            assert output_dim[dim_idx] == dim.dim_value
+            if opset != 14:
+                assert output_dim[dim_idx] == dim.dim_value
             assert output_type == _utils.dtype_onnx_to_torch(
                 trainer._onnx_model.graph.output[i].type.tensor_type.elem_type)
 
@@ -654,7 +664,6 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values, device)
     assert (trainer_from_onnx._onnx_model.graph == trainer._onnx_model.graph)
     assert (onnx.helper.printable_graph(trainer_from_onnx._onnx_model.graph) == onnx.helper.printable_graph(trainer._onnx_model.graph))
 
-testInstantiateORTTrainer('eval_step', None, None, 'cpu')
 
 @pytest.mark.parametrize("seed, device", [
     (0, 'cpu'),
@@ -1506,27 +1515,50 @@ def testTrainingGraphExport(debug_files):
 def _adam_max_norm_clip_data():
     device_capability_major = torch.cuda.get_device_capability()[0]
     if device_capability_major == 7:    # V100 for Dev machine
-        return [
-            (0, 'cuda', 1.0, 1, 12, [10.592951, 10.067989, 9.619152, 9.245731, 8.881137,\
-                8.578644, 8.280573, 8.063023, 7.797933, 7.486215, 7.233806, 7.011791]),
-            (0, 'cuda', 0.1, 1, 12, [10.592951, 10.068722, 9.620503, 9.247791, 8.883972,\
-                8.582286, 8.285027, 8.068308, 7.803638, 7.492318, 7.240352, 7.018665]),
-            (42, 'cuda', 1.0, 1, 12, [10.647908, 10.144501, 9.672352, 9.306980, 8.956026,\
-                8.602655, 8.351079, 8.088144, 7.867220, 7.564082, 7.289846, 7.073726]),
-            (42, 'cuda', 0.1, 1, 12, [10.647908, 10.145191, 9.673690, 9.309031, 8.959020,\
-                8.606632, 8.355836, 8.093478, 7.873327, 7.570731, 7.296772, 7.0809422]),
-        ]
+        return {
+            12: [
+                (0, 'cuda', 1.0, 1, 12, [10.592951, 10.067989, 9.619152, 9.245731, 8.881137,
+                    8.578644, 8.280573, 8.063023, 7.797933, 7.486215, 7.233806, 7.011791]),
+                (0, 'cuda', 0.1, 1, 12, [10.592951, 10.068722, 9.620503, 9.247791, 8.883972,
+                    8.582286, 8.285027, 8.068308, 7.803638, 7.492318, 7.240352, 7.018665]),
+                (42, 'cuda', 1.0, 1, 12, [10.647908, 10.144501, 9.672352, 9.306980, 8.956026,
+                    8.602655, 8.351079, 8.088144, 7.867220, 7.564082, 7.289846, 7.073726]),
+                (42, 'cuda', 0.1, 1, 12, [10.647908, 10.145191, 9.673690, 9.309031, 8.959020,
+                    8.606632, 8.355836, 8.093478, 7.873327, 7.570731, 7.296772, 7.0809422]),
+            ],
+            14: [
+                (0, 'cuda', 1.0, 1, 12, [10.584141, 10.068119, 9.581743, 9.191472, 8.880169, 8.5352,
+                                         8.311425,  8.061202, 7.773032, 7.523009,  7.258711, 7.02805]),
+                (0, 'cuda', 0.1, 1, 12, [10.584141, 10.068845, 9.583107, 9.193537, 8.882966, 8.538839,
+                                         8.315872,  8.066408, 7.778978, 7.529708, 7.265849, 7.035439]),
+                (42, 'cuda', 1.0, 1, 12, [10.697515, 10.22967, 9.766556, 9.430037, 9.083106, 8.718601,
+                                          8.463726,  8.17396, 7.945755, 7.660188, 7.396963, 7.172944]),
+                (42, 'cuda', 0.1, 1, 12, [10.697515, 10.22967, 9.766556, 9.430037, 9.083106, 8.718601,
+                                          8.463726,  8.17396, 7.945755, 7.660188, 7.396963, 7.172944]),
+            ]}
     elif device_capability_major == 5:  # M60 for CI machines (Python Packaging Pipeline)
-        return [
-            (0, 'cuda', 1.0, 1, 12, [10.618382, 10.08292 ,  9.603334,  9.258133,  8.917768,  8.591574,
-                                     8.318401,  8.042292,  7.783608,  7.50226 ,  7.236041,  7.035602]),
-            (0, 'cuda', 0.1, 1, 12, [10.618382, 10.083632,  9.604639,  9.260109,  8.920504,  8.595082,
-                                     8.322799,  8.047493,  7.78929 ,  7.508382,  7.242587,  7.042367]),
-            (42, 'cuda', 1.0, 1, 12, [10.68639 , 10.102986,  9.647681,  9.293091,  8.958928,  8.625297,
-                                      8.351107,  8.079577,  7.840723,  7.543044,  7.284141,  7.072688]),
-            (42, 'cuda', 0.1, 1, 12, [10.68639 , 10.103672,  9.649025,  9.295167,  8.961777,  8.629059,
-                                      8.355571,  8.084871,  7.846589,  7.549438,  7.290722,  7.079446]),
-        ]
+        return {
+            12: [
+                (0, 'cuda', 1.0, 1, 12, [10.618382, 10.08292 ,  9.603334,  9.258133,  8.917768,  8.591574,
+                                         8.318401,  8.042292,  7.783608,  7.50226 ,  7.236041,  7.035602]),
+                (0, 'cuda', 0.1, 1, 12, [10.618382, 10.083632,  9.604639,  9.260109,  8.920504,  8.595082,
+                                         8.322799,  8.047493,  7.78929 ,  7.508382,  7.242587,  7.042367]),
+                (42, 'cuda', 1.0, 1, 12, [10.68639 , 10.102986,  9.647681,  9.293091,  8.958928,  8.625297,
+                                          8.351107,  8.079577,  7.840723,  7.543044,  7.284141,  7.072688]),
+                (42, 'cuda', 0.1, 1, 12, [10.68639 , 10.103672,  9.649025,  9.295167,  8.961777,  8.629059,
+                                          8.355571,  8.084871,  7.846589,  7.549438,  7.290722,  7.079446]),
+            ],
+            14: [
+                (0, 'cuda', 1.0, 1, 12, [10.618382, 10.08292 ,  9.603334,  9.258133,  8.917768,  8.591574,
+                                         8.318401,  8.042292,  7.783608,  7.50226 ,  7.236041,  7.035602]),
+                (0, 'cuda', 0.1, 1, 12, [10.618382, 10.083632,  9.604639,  9.260109,  8.920504,  8.595082,
+                                         8.322799,  8.047493,  7.78929 ,  7.508382,  7.242587,  7.042367]),
+                (42, 'cuda', 1.0, 1, 12, [10.68639 , 10.102986,  9.647681,  9.293091,  8.958928,  8.625297,
+                                          8.351107,  8.079577,  7.840723,  7.543044,  7.284141,  7.072688]),
+                (42, 'cuda', 0.1, 1, 12, [10.697515, 10.22967, 9.766556, 9.430037, 9.083106, 8.718601,
+                                          8.463726,  8.17396, 7.945755, 7.660188, 7.396963, 7.172944]),
+            ]}
+        
 @pytest.mark.parametrize("seed,device,max_norm_clip,gradient_accumulation_steps,total_steps,expected_loss", _adam_max_norm_clip_data())
 def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps, total_steps, expected_loss):
     rtol = 1e-5
@@ -1540,6 +1572,7 @@ def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumula
     model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.AdamConfig(lr=0.001, max_norm_clip=max_norm_clip)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+    opset = get_model_opset(orttrainer._onnx_model)
 
     # Training loop
     actual_loss = []
@@ -1549,7 +1582,7 @@ def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumula
         actual_loss.append(loss.cpu().item())
 
     # Compare legacy vs experimental APIs
-    _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=rtol)
+    _test_helpers.assert_model_outputs(expected_loss[opset], actual_loss, rtol=rtol)
 
 
 def _lamb_max_norm_clip_data():
