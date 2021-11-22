@@ -778,7 +778,7 @@ def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers
     seed = 321
     device = 'cuda'
     rtol = 1e-3
-    total_steps = len(expected_loss)
+    total_steps = len(expected_loss[12])
     torch.manual_seed(seed)
     set_seed(seed)
 
