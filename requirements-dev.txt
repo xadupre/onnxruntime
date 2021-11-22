@@ -10,6 +10,7 @@ pandas
 protobuf
 pytest
 pytest-cov
+pytest-subtests
 scikit-learn
 scipy
 sympy

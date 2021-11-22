@@ -654,6 +654,7 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values, device)
     assert (trainer_from_onnx._onnx_model.graph == trainer._onnx_model.graph)
     assert (onnx.helper.printable_graph(trainer_from_onnx._onnx_model.graph) == onnx.helper.printable_graph(trainer._onnx_model.graph))
 
+testInstantiateORTTrainer('eval_step', None, None, 'cpu')
 
 @pytest.mark.parametrize("seed, device", [
     (0, 'cpu'),
