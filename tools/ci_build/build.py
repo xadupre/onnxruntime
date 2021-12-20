@@ -1081,6 +1081,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if args.build_eager_mode:
         import torch
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
+        if not is_windows():
+            cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=0"]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
