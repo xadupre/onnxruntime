@@ -907,6 +907,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
     "${TEST_SRC_DIR}/eager/*.cc"
     )
   add_executable(onnxruntime_eager_mode_test ${onnxruntime_eager_mode_test_src})
+  target_compile_options(onnxruntime_eager_mode_test PUBLIC -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI})
   target_include_directories(onnxruntime_eager_mode_test PRIVATE ${ONNXRUNTIME_ROOT}
           ${onnxruntime_graph_header}
           ${onnxruntime_exec_src_dir}

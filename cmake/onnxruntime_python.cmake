@@ -105,6 +105,9 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)
+  target_compile_options(onnxruntime_pybind11_state PUBLIC -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI})
+  target_compile_options(onnxruntime_eager PUBLIC -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI})
+
   # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
   # force the build to find the protobuf headers ort using.
   target_include_directories(onnxruntime_pybind11_state PRIVATE "${REPO_ROOT}/cmake/external/protobuf/src")

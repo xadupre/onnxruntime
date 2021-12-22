@@ -26,6 +26,7 @@ onnxruntime_add_include_to_target(onnxruntime_eager onnxruntime_common onnxrunti
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_eager PUBLIC ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
+target_compile_options(onnxruntime_eager PUBLIC -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI})
 target_include_directories(onnxruntime_eager PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(onnxruntime_eager ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_eager PROPERTIES FOLDER "ONNXRuntime")
