@@ -98,6 +98,30 @@ struct TreeNodeElement {
   inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
 };
 
+enum MissingTrack3 : uint8_t {
+  kTrue0 = 16,
+  kTrue1 = 32,
+  kTrue2 = 64,
+  kChildren3 = 128
+};
+
+template <typename T>
+struct TreeNodeElement3 {
+  // This structure is equivalent to 3 nodes TreeNodeElement.
+  // It allows to save (6*4)/(16*4) ~ 27% reduction.
+  int feature_id[3];
+  T value_or_unique_weight[3];
+  int32_t node_inc_or_weight[4];
+  uint8_t flags;
+
+  inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
+  inline bool is_not_leaf() const { return !(flags & NODE_MODE::LEAF); }
+  inline bool is_missing_track_true0() const { return flags & MissingTrack3::kTrue0; }
+  inline bool is_missing_track_true1() const { return flags & MissingTrack3::kTrue1; }
+  inline bool is_missing_track_true2() const { return flags & MissingTrack3::kTrue2; }
+  inline bool children_are_tree_element3() const { return flags & MissingTrack3::kChildren3; }
+};
+
 template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeAggregator {
  protected:

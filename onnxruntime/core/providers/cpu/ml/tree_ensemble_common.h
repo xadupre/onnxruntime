@@ -48,6 +48,10 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   std::vector<SparseValue<ThresholdType>> weights_;
   std::vector<TreeNodeElement<ThresholdType>*> roots_;
 
+  // optimisation
+  std::vector<TreeNodeElement3<ThresholdType>*> roots3_;
+  std::vector<TreeNodeElement3<ThresholdType>> nodes3_;
+
  public:
   TreeEnsembleCommon() {}
 
@@ -80,8 +84,11 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
               const std::vector<ThresholdType>& target_class_weights_as_tensor);
 
  protected:
-  TreeNodeElement<ThresholdType>* ProcessTreeNodeLeave(TreeNodeElement<ThresholdType>* root,
-                                                       const InputType* x_data) const;
+  void ConvertTreeElementIntoTreeElement3();
+  int ConvertTreeElementIntoTreeElement3(size_t root_id, InlinedVector<size_t>& to_remove);
+
+  const TreeNodeElement<ThresholdType>* ProcessTreeNodeLeave(size_t root_id, const InputType* x_data) const;
+  const TreeNodeElement<ThresholdType>* ProcessTreeNodeLeave3(size_t root_id, const InputType* x_data) const;
 
   template <typename AGG>
   void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Y, Tensor* label, const AGG& agg) const;
@@ -365,6 +372,118 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
+void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeElementIntoTreeElement3() {
+  roots3_.clear();
+  nodes3_.clear();
+  if (!same_mode_ || (node_.size() >= (2 << 30))) {
+    // Not applicable in that case.
+    return;
+  }
+  InlinedVector<int> root3_ids;
+  root_ids.reserve(roots_.size());
+  InlinedVector<size_t> to_remove;
+  to_remove.reserve(nodes_.size());
+  for (size_t root_id = 0; root_id < roots_.size(); ++root_id) {
+    auto root3_id = ConvertTreeElementIntoTreeElement3(root_id, to_remove);
+    root3_ids.push_back(root3_id);
+  }
+
+  if (to_remove.size() == 0) {
+    // No improvment.
+    return;
+  }
+  // TODO: We should rename and remove node_.
+
+  // Captures the pointer on the root3.
+  roots3_.reserve(root3_ids.size());
+  for (auto it = root3_ids.begin(); it != root3_ids.end(); ++it) {
+    roots3_.push_back(*it >= 0 ? &nodes3_[*it] : nullptr);
+  }
+}
+
+template <typename InputType, typename ThresholdType, typename OutputType>
+int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeElementIntoTreeElement3(size_t root_id, InlinedVector<size_t>& to_remove) {
+  std::vector<size_t> removed_nodes;
+  TreeElement<ThresholdType>*node, true_node, false_node;
+  std::pair<size_t, TreeElement<ThresholdType>*> pair;
+  std::deque<std::pair<size_t, TreeElement<ThresholdType>*>> stack;
+  std::unordered_map<size_t, size_t> map_node_to_node3;
+  size_t last_node3 = nodes3_.size();
+  nodes3_.reserve(nodes_.size() / 3);
+  stack.push_back(std::pair<>(roots_[root_id] - nodes_.begin(), roots_[root_id]));
+  while (!stack.empty()) {
+    pair = stack.pop_front();
+    ORT_ENFORCE(map_node_to_node3.find(pair.first) == map_node_to_node3.end(),
+                "This node index ", pair.first, " was already added as a TreeElement3.");
+    node = pair.second;
+    if (!node->is_not_leaf())
+      continue;
+    true_node = node + node->truenode_inc_or_first_weight;
+    false_node = node + node->falsenode_inc_or_n_weights;
+    if (!true_node->is_node_leaf() || !false_node->is_node_leaf())
+      continue;
+    TreeNodeElement3<ThresholdType> node3;
+    node3.node_inc_or_weight = {pair.first + node->falsenode_inc_or_n_weights + false_node->falsenode_inc_or_n_weights,
+                                pair.first + node->falsenode_inc_or_n_weights + false_node->true_node_inc_or_n_weights,
+                                pair.first + node->true_node_inc_or_n_weights + true_node->falsenode_inc_or_n_weights,
+                                pair.first + node->true_node_inc_or_n_weights + true_node->true_node_inc_or_n_weights};
+    node3.feature_id = {false_node->feature_id,
+                        true_node->feature_id,
+                        node->feature_id};
+    node3.value_or_unique_weight = {
+        false_node->value_or_unique_weight,
+        true_node->value_or_unique_weight,
+        node->value_or_unique_weight};
+    node3.flags = node->node() |
+                  (false_node->is_missing_track_true() * MissingTrack3::kTrue0) |
+                  (true_node->is_missing_track_true() * MissingTrack3::kTrue1) |
+                  (node->is_missing_track_true() * MissingTrack3::kTrue2);
+    auto node3_index = nodes_3.size();
+    map_node_to_node3[pair.first] = node3_index;
+    map_node_to_node3[node->truenode_inc_or_first_weight] = node3_index;
+    map_node_to_node3[node->falsenode_inc_or_n_weights] = node3_index;
+    bool add = true;
+    for (size_t i = 0; i < 4; ++i) {
+      stack.push_back(std::pair<>(node3.node_inc_or_weight[i], nodes_[node3.node_inc_or_weight[i]]));
+      if (map_node_to_node3.find(node3.node_inc_or_weight[i]) != map_node_to_node3.end()) {
+        // A node already points to another node converted into node3.
+        // This happens when a child node points to another node at a lower level (closer to the root).
+        add = false;
+        break;
+      }
+    }
+    if (add) {
+      // Unable to handle this node.
+      continue;
+    }
+    nodes3_.emplace_back(node3);
+    to_remove.push_back(pair.first);
+    to_remove.push_back(pair.first + node->falsenode_inc_or_n_weights);
+    to_remove.push_back(pair.first + node->true_node_inc_or_n_weights);
+  }
+  // Every node3 points to a node. It needs to be changed.
+  int changed;
+  for (size_t i = last_node3; i < nodes3_.size(); ++i) {
+    TreeNodeElement3<ThresholdType>& n3 = nodes_[i];
+    changed = 0;
+    for (auto i = 0; i < 4; ++i) {
+      auto it = map_node_to_node3.find(n3.node_inc_or_weight[i]);
+      if (it == map_node_to_node3.end())
+        break;
+      ++changed;
+    }
+    if (changed == 4) {
+      n3.flags |= MissingTrack3::kChildren3;
+      for (auto i = 0; i < 4; ++i) {
+        auto it = map_node_to_node3.find(n3.node_inc_or_weight[i]);
+        n3.node_inc_or_weight[i] = it->second;
+      }
+    }
+  }
+  return node3_.size() > last_node3 ? last_node3 : -1;
+}
+
+template <typename InputType, typename ThresholdType, typename OutputType>
 Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::compute(OpKernelContext* ctx,
                                                                          const Tensor* X,
                                                                          Tensor* Y,
@@ -428,7 +547,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
       ScoreValue<ThresholdType> score = {0, 0};
       if (n_trees_ <= parallel_tree_ || max_num_threads == 1) { /* section A: 1 output, 1 row and not enough trees to parallelize */
         for (int64_t j = 0; j < n_trees_; ++j) {
-          agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[onnxruntime::narrow<size_t>(j)], x_data));
+          agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(onnxruntime::narrow<size_t>(j), x_data));
         }
       } else { /* section B: 1 output, 1 row and enough trees to parallelize */
         std::vector<ScoreValue<ThresholdType>> scores(onnxruntime::narrow<size_t>(n_trees_), {0, 0});
@@ -436,7 +555,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
             ttp,
             SafeInt<int32_t>(n_trees_),
             [this, &scores, &agg, x_data](ptrdiff_t j) {
-              agg.ProcessTreeNodePrediction1(scores[j], *ProcessTreeNodeLeave(roots_[j], x_data));
+              agg.ProcessTreeNodePrediction1(scores[j], *ProcessTreeNodeLeave(j, x_data));
             },
             max_num_threads);
 
@@ -467,7 +586,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
         }
         for (j = 0; j < static_cast<size_t>(n_trees_); ++j) {
           for (i = batch; i < batch_end; ++i) {
-            agg.ProcessTreeNodePrediction1(scores[SafeInt<ptrdiff_t>(i - batch)], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+            agg.ProcessTreeNodePrediction1(scores[SafeInt<ptrdiff_t>(i - batch)], *ProcessTreeNodeLeave(j, x_data + i * stride));
           }
         }
         for (i = batch; i < batch_end; ++i) {
@@ -492,7 +611,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
               for (auto j = work.start; j < work.end; ++j) {
                 for (int64_t i = begin_n; i < end_n; ++i) {
                   agg.ProcessTreeNodePrediction1(scores[batch_num * SafeInt<ptrdiff_t>(N) + i],
-                                                 *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+                                                 *ProcessTreeNodeLeave(j, x_data + i * stride));
                 }
               }
             });
@@ -518,7 +637,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
           [this, &agg, x_data, z_data, stride, label_data](ptrdiff_t i) {
             ScoreValue<ThresholdType> score = {0, 0};
             for (size_t j = 0; j < static_cast<size_t>(n_trees_); ++j) {
-              agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+              agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(j, x_data + i * stride));
             }
 
             agg.FinalizeScores1(z_data + i, score,
@@ -531,7 +650,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
       if (n_trees_ <= parallel_tree_ || max_num_threads == 1) { /* section A2 */
         InlinedVector<ScoreValue<ThresholdType>> scores(onnxruntime::narrow<size_t>(n_targets_or_classes_), {0, 0});
         for (int64_t j = 0; j < n_trees_; ++j) {
-          agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[onnxruntime::narrow<size_t>(j)], x_data), weights_);
+          agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(onnxruntime::narrow<size_t>(j), x_data), weights_);
         }
         agg.FinalizeScores(scores, z_data, -1, label_data);
       } else { /* section B2: 2+ outputs, 1 row, enough trees to parallelize */
@@ -544,7 +663,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
               scores[batch_num].resize(onnxruntime::narrow<size_t>(n_targets_or_classes_), {0, 0});
               auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, onnxruntime::narrow<size_t>(n_trees_));
               for (auto j = work.start; j < work.end; ++j) {
-                agg.ProcessTreeNodePrediction(scores[batch_num], *ProcessTreeNodeLeave(roots_[j], x_data), weights_);
+                agg.ProcessTreeNodePrediction(scores[batch_num], *ProcessTreeNodeLeave(j, x_data), weights_);
               }
             });
         for (size_t i = 1, limit = scores.size(); i < limit; ++i) {
@@ -567,7 +686,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
         }
         for (j = 0, limit = roots_.size(); j < limit; ++j) {
           for (i = batch; i < batch_end; ++i) {
-            agg.ProcessTreeNodePrediction(scores[SafeInt<ptrdiff_t>(i - batch)], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride), weights_);
+            agg.ProcessTreeNodePrediction(scores[SafeInt<ptrdiff_t>(i - batch)], *ProcessTreeNodeLeave(j, x_data + i * stride), weights_);
           }
         }
         for (i = batch; i < batch_end; ++i) {
@@ -593,7 +712,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
               for (auto j = work.start; j < work.end; ++j) {
                 for (int64_t i = begin_n; i < end_n; ++i) {
                   agg.ProcessTreeNodePrediction(scores[batch_num * SafeInt<ptrdiff_t>(N) + i],
-                                                *ProcessTreeNodeLeave(roots_[j], x_data + i * stride), weights_);
+                                                *ProcessTreeNodeLeave(j, x_data + i * stride), weights_);
                 }
               }
             });
@@ -625,7 +744,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
             for (auto i = work.start; i < work.end; ++i) {
               std::fill(scores.begin(), scores.end(), ScoreValue<ThresholdType>({0, 0}));
               for (j = 0, limit = roots_.size(); j < limit; ++j) {
-                agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride), weights_);
+                agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(j, x_data + i * stride), weights_);
               }
 
               agg.FinalizeScores(scores,
@@ -660,10 +779,57 @@ inline bool _isnan_(double x) { return std::isnan(x); }
 inline bool _isnan_(int64_t) { return false; }
 inline bool _isnan_(int32_t) { return false; }
 
+template <typename InputType, typename ThresholdType>
+inline int GetLeave3IndexLEQ(InputType* features, const TreeNodeElement3<ThresholdType>* node3, const InputType* x_data) {
+  features[0] = x_data[node3->feature_id[0]];
+  features[1] = x_data[node3->feature_id[1]];
+  features[2] = x_data[node3->feature_id[2]];
+  return node3->node_inc_or_weight[features[2] <= node3->value_or_unique_weight[2]
+                                       ? (features[1] <= node3->value_or_unique_weight[1] ? 3 : 2)
+                                       : (features[0] <= node3->value_or_unique_weight[0] ? 1 : 0)];
+}
+
 template <typename InputType, typename ThresholdType, typename OutputType>
-TreeNodeElement<ThresholdType>*
+const TreeNodeElement<ThresholdType>*
+TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave3(size_t root_id, const InputType* x_data) const {
+  ORT_ENFORCE(same_mode_, "This optimization is only available when all node follow the same mode.");
+  const TreeNodeElement3<ThresholdType>* root3 = roots3_[root_id];
+  const TreeNodeElement<ThresholdType>* root;
+  ORT_ENFORCE(root3 != nullptr, "No optimization for tree ", root_id, ".");
+  InputType features[3];
+  int node_id;
+  switch (root3->mode()) {
+    case NODE_MODE::BRANCH_LEQ:
+      if (has_missing_tracks_) {
+        ORT_THROW("TreeElement3 not yet implement with has_missing_tracks_.");
+      } else {
+        while (root3->children_are_tree_element3()) {
+          node_id = GetLeave3IndexLEQ(features, root3, x_data);
+          root3 = &(nodes3_[node_id]);
+        }
+        node_id = GetLeave3IndexLEQ(features, root3, x_data);
+        root = &(nodes_[node_id]);
+        while (root->is_not_leaf()) {
+          root += x_data[root->feature_id] <= root->value_or_unique_weight
+                      ? root->truenode_inc_or_first_weight
+                      : root->falsenode_inc_or_n_weights;
+        }
+        return root;
+      }
+      break;
+    default:
+      ORT_THROW("TreeElement3 not yet implement with mode ", root3->mode(), ".");
+  }
+}
+
+template <typename InputType, typename ThresholdType, typename OutputType>
+const TreeNodeElement<ThresholdType>*
 TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
-    TreeNodeElement<ThresholdType>* root, const InputType* x_data) const {
+    size_t root_id, const InputType* x_data) const {
+  if (!nodes3_.empty() && (roots3_[root_id] != nullptr)) {
+    return ProcessTreeNodeLeave3(root_id, x_data);
+  }
+  const TreeNodeElement<ThresholdType>* root = roots_[root_id];
   InputType val;
   if (same_mode_) {
     switch (root->mode()) {

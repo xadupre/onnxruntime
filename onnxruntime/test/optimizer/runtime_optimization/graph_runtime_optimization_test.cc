@@ -361,6 +361,19 @@ TEST(GraphRuntimeOptimizationTest, TestNhwcTransformerDirectlyUpdatesQLinearConv
       });
 }
 
+TEST(GraphRuntimeOptimizationTest, RemovableAttributes) {
+  SaveAndLoadRuntimeOptimizationsForModel(
+      ORT_TSTR("testdata/transform/SklearnHGBRegressorTrue.model.onnx"),
+      ORT_TSTR("testdata/transform/runtime_optimization/SklearnHGBRegressorTrue.model.onnx"),
+      [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
+        EXPECT_EQ(loaded_ops,
+                  (OpCountMap{{"TreeEnsembleRegressor", 1}}));
+
+        EXPECT_EQ(initialized_ops,
+                  (OpCountMap{{"TreeEnsembleRegressor", 1}}));
+      });
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(GraphRuntimeOptimizationTest, TestOnlyApplyMinimalBuildOptimizations) {
   // This test assumes that AttentionFusion is not included in the minimal build optimizations.
