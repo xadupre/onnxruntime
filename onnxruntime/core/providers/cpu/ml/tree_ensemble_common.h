@@ -84,8 +84,8 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
               const std::vector<ThresholdType>& target_class_weights_as_tensor);
 
  protected:
-  void ConvertTreeElementIntoTreeElement3();
-  int ConvertTreeElementIntoTreeElement3(size_t root_id, InlinedVector<size_t>& to_remove);
+  void ConvertTreeIntoTree3();
+  int ConvertTreeNodeElementIntoTreeNodeElement3(size_t root_id, InlinedVector<size_t>& to_remove);
 
   const TreeNodeElement<ThresholdType>* ProcessTreeNodeLeave(size_t root_id, const InputType* x_data) const;
   const TreeNodeElement<ThresholdType>* ProcessTreeNodeLeave3(size_t root_id, const InputType* x_data) const;
@@ -368,11 +368,14 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       break;
     }
   }
+
+  // Use optimized implementation.
+  ConvertTreeIntoTree3();
   return Status::OK();
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
-void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeElementIntoTreeElement3() {
+void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeIntoTree3() {
   roots3_.clear();
   nodes3_.clear();
   if (!same_mode_ || (node_.size() >= (2 << 30))) {
@@ -380,11 +383,11 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeElemen
     return;
   }
   InlinedVector<int> root3_ids;
-  root_ids.reserve(roots_.size());
+  root3_ids.reserve(roots_.size());
   InlinedVector<size_t> to_remove;
   to_remove.reserve(nodes_.size());
   for (size_t root_id = 0; root_id < roots_.size(); ++root_id) {
-    auto root3_id = ConvertTreeElementIntoTreeElement3(root_id, to_remove);
+    auto root3_id = ConvertTreeNodeElementIntoTreeNodeElement3(root_id, to_remove);
     root3_ids.push_back(root3_id);
   }
 
@@ -402,7 +405,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeElemen
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
-int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeElementIntoTreeElement3(size_t root_id, InlinedVector<size_t>& to_remove) {
+int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeElementIntoTreeNodeElement3(size_t root_id, InlinedVector<size_t>& to_remove) {
   std::vector<size_t> removed_nodes;
   TreeElement<ThresholdType>*node, true_node, false_node;
   std::pair<size_t, TreeElement<ThresholdType>*> pair;
