@@ -378,7 +378,7 @@ template <typename InputType, typename ThresholdType, typename OutputType>
 void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeIntoTree3() {
   roots3_.clear();
   nodes3_.clear();
-  if (!same_mode_ || (node_.size() >= (2 << 30))) {
+  if (!same_mode_ || (nodes_.size() >= (2 << 30))) {
     // Not applicable in that case.
     return;
   }
@@ -407,17 +407,17 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeIntoTr
 template <typename InputType, typename ThresholdType, typename OutputType>
 int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeElementIntoTreeNodeElement3(size_t root_id, InlinedVector<size_t>& to_remove) {
   std::vector<size_t> removed_nodes;
-  TreeElement<ThresholdType>*node, true_node, false_node;
-  std::pair<size_t, TreeElement<ThresholdType>*> pair;
-  std::deque<std::pair<size_t, TreeElement<ThresholdType>*>> stack;
+  TreeNodeElement<ThresholdType>*node, true_node, false_node;
+  std::pair<size_t, TreeNodeElement<ThresholdType>*> pair;
+  std::deque<std::pair<size_t, TreeNodeElement<ThresholdType>*>> stack;
   std::unordered_map<size_t, size_t> map_node_to_node3;
   size_t last_node3 = nodes3_.size();
   nodes3_.reserve(nodes_.size() / 3);
-  stack.push_back(std::pair<>(roots_[root_id] - nodes_.begin(), roots_[root_id]));
+  stack.push_back(std::pair<size_t, TreeNodeElement<ThresholdType>*>(roots_[root_id] - nodes_.begin(), roots_[root_id]));
   while (!stack.empty()) {
     pair = stack.pop_front();
     ORT_ENFORCE(map_node_to_node3.find(pair.first) == map_node_to_node3.end(),
-                "This node index ", pair.first, " was already added as a TreeElement3.");
+                "This node index ", pair.first, " was already added as a TreeNodeElement3.");
     node = pair.second;
     if (!node->is_not_leaf())
       continue;
@@ -441,13 +441,13 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
                   (false_node->is_missing_track_true() * MissingTrack3::kTrue0) |
                   (true_node->is_missing_track_true() * MissingTrack3::kTrue1) |
                   (node->is_missing_track_true() * MissingTrack3::kTrue2);
-    auto node3_index = nodes_3.size();
+    auto node3_index = nodes3_.size();
     map_node_to_node3[pair.first] = node3_index;
     map_node_to_node3[node->truenode_inc_or_first_weight] = node3_index;
     map_node_to_node3[node->falsenode_inc_or_n_weights] = node3_index;
     bool add = true;
     for (size_t i = 0; i < 4; ++i) {
-      stack.push_back(std::pair<>(node3.node_inc_or_weight[i], nodes_[node3.node_inc_or_weight[i]]));
+      stack.push_back(std::pair<size_t, TreeNodeElement<ThresholdType>*>(node3.node_inc_or_weight[i], nodes_[node3.node_inc_or_weight[i]]));
       if (map_node_to_node3.find(node3.node_inc_or_weight[i]) != map_node_to_node3.end()) {
         // A node already points to another node converted into node3.
         // This happens when a child node points to another node at a lower level (closer to the root).
@@ -483,7 +483,7 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
       }
     }
   }
-  return node3_.size() > last_node3 ? last_node3 : -1;
+  return nodes3_.size() > last_node3 ? last_node3 : -1;
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -804,7 +804,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave3(
   switch (root3->mode()) {
     case NODE_MODE::BRANCH_LEQ:
       if (has_missing_tracks_) {
-        ORT_THROW("TreeElement3 not yet implement with has_missing_tracks_.");
+        ORT_THROW("TreeNodeElement3 not yet implement with has_missing_tracks_.");
       } else {
         while (root3->children_are_tree_element3()) {
           node_id = GetLeave3IndexLEQ(features, root3, x_data);
@@ -821,7 +821,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave3(
       }
       break;
     default:
-      ORT_THROW("TreeElement3 not yet implement with mode ", root3->mode(), ".");
+      ORT_THROW("TreeNodeElement3 not yet implement with mode ", root3->mode(), ".");
   }
 }
 
