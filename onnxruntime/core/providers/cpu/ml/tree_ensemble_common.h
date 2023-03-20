@@ -370,7 +370,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   }
 
   // Use optimized implementation.
-  //ConvertTreeIntoTree3();
+  ConvertTreeIntoTree3();
   return Status::OK();
 }
 
@@ -429,18 +429,19 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
       continue;
     }
     TreeNodeElement3<ThresholdType> node3;
-    node3.node_inc_or_weight[0] = static_cast<int32_t>(pair.first) + node->falsenode_inc_or_n_weights + false_node->falsenode_inc_or_n_weights;
-    node3.node_inc_or_weight[1] = static_cast<int32_t>(pair.first) + node->falsenode_inc_or_n_weights + false_node->truenode_inc_or_first_weight;
-    node3.node_inc_or_weight[2] = static_cast<int32_t>(pair.first) + node->truenode_inc_or_first_weight + true_node->falsenode_inc_or_n_weights;
-    node3.node_inc_or_weight[3] = static_cast<int32_t>(pair.first) + node->truenode_inc_or_first_weight + true_node->truenode_inc_or_first_weight;
+    node3.node_id[0] = static_cast<int32_t>(pair.first) + node->falsenode_inc_or_n_weights + false_node->falsenode_inc_or_n_weights;
+    node3.node_id[1] = static_cast<int32_t>(pair.first) + node->falsenode_inc_or_n_weights + false_node->truenode_inc_or_first_weight;
+    node3.node_id[2] = static_cast<int32_t>(pair.first) + node->truenode_inc_or_first_weight + true_node->falsenode_inc_or_n_weights;
+    node3.node_id[3] = static_cast<int32_t>(pair.first) + node->truenode_inc_or_first_weight + true_node->truenode_inc_or_first_weight;
 
     node3.feature_id[0] = false_node->feature_id;
     node3.feature_id[1] = true_node->feature_id;
     node3.feature_id[2] = node->feature_id;
 
-    node3.value_or_unique_weight[0] = false_node->value_or_unique_weight;
-    node3.value_or_unique_weight[1] = true_node->value_or_unique_weight;
-    node3.value_or_unique_weight[2] = node->value_or_unique_weight;
+    node3.thresholds[0] = false_node->value_or_unique_weight;
+    node3.thresholds[1] = true_node->value_or_unique_weight;
+    node3.thresholds[2] = node->value_or_unique_weight;
+    node3.thresholds[3] = node->value_or_unique_weight;  // repeated for AVX
 
     node3.flags = node->mode() |
                   (false_node->is_missing_track_true() * MissingTrack3::kTrue0) |
@@ -450,7 +451,7 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
     auto node3_index = nodes3_.size();
     bool add = true;
     for (size_t i = 0; i < 4; ++i) {
-      auto it = map_node_to_node3.find(node3.node_inc_or_weight[i]);
+      auto it = map_node_to_node3.find(node3.node_id[i]);
       if (it != map_node_to_node3.end()) {
         // A node already points to another node converted into node3.
         // This happens when a child node points to another node at a lower level (closer to the root).
@@ -463,7 +464,7 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
       continue;
     }
     for (size_t i = 0; i < 4; ++i) {
-      stack.push_back(std::pair<size_t, TreeNodeElement<ThresholdType>*>(node3.node_inc_or_weight[i], &(nodes_[node3.node_inc_or_weight[i]])));
+      stack.push_back(std::pair<size_t, TreeNodeElement<ThresholdType>*>(node3.node_id[i], &(nodes_[node3.node_id[i]])));
     }
     map_node_to_node3[pair.first] = node3_index;
     map_node_to_node3[static_cast<int32_t>(pair.first) + node->truenode_inc_or_first_weight] = node3_index;
@@ -479,7 +480,7 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
     TreeNodeElement3<ThresholdType>& n3 = nodes3_[i];
     changed = 0;
     for (size_t j = 0; j < 4; ++j) {
-      auto it = map_node_to_node3.find(n3.node_inc_or_weight[j]);
+      auto it = map_node_to_node3.find(n3.node_id[j]);
       if (it == map_node_to_node3.end())
         break;
       ++changed;
@@ -487,8 +488,8 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
     if (changed == 4) {
       n3.flags |= MissingTrack3::kChildren3;
       for (size_t j = 0; j < 4; ++j) {
-        auto it = map_node_to_node3.find(n3.node_inc_or_weight[j]);
-        n3.node_inc_or_weight[j] = static_cast<int32_t>(it->second);
+        auto it = map_node_to_node3.find(n3.node_id[j]);
+        n3.node_id[j] = static_cast<int32_t>(it->second);
       }
     }
   }
@@ -796,9 +797,9 @@ inline int GetLeave3IndexLEQ(InputType* features, const TreeNodeElement3<Thresho
   features[0] = x_data[node3->feature_id[0]];
   features[1] = x_data[node3->feature_id[1]];
   features[2] = x_data[node3->feature_id[2]];
-  return node3->node_inc_or_weight[features[2] <= node3->value_or_unique_weight[2]
-                                       ? (features[1] <= node3->value_or_unique_weight[1] ? 3 : 2)
-                                       : (features[0] <= node3->value_or_unique_weight[0] ? 1 : 0)];
+  return node3->node_id[features[2] <= node3->thresholds[2]
+                            ? (features[1] <= node3->thresholds[1] ? 3 : 2)
+                            : (features[0] <= node3->thresholds[0] ? 1 : 0)];
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>

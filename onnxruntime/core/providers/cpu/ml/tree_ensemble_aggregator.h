@@ -110,8 +110,8 @@ struct TreeNodeElement3 {
   // This structure is equivalent to 3 nodes TreeNodeElement.
   // It allows to save (6*4)/(16*4) ~ 27% reduction.
   int feature_id[3];
-  T value_or_unique_weight[3];
-  int32_t node_inc_or_weight[4];
+  T thresholds[4];
+  int32_t node_id[4];
   uint8_t flags;
 
   inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
