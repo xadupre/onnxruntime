@@ -407,15 +407,16 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeIntoTr
 template <typename InputType, typename ThresholdType, typename OutputType>
 int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeElementIntoTreeNodeElement3(size_t root_id, InlinedVector<size_t>& to_remove) {
   std::vector<size_t> removed_nodes;
-  TreeNodeElement<ThresholdType>*node, true_node, false_node;
-  std::pair<size_t, TreeNodeElement<ThresholdType>*> pair;
+  TreeNodeElement<ThresholdType>*node, *true_node, *false_node;
   std::deque<std::pair<size_t, TreeNodeElement<ThresholdType>*>> stack;
   std::unordered_map<size_t, size_t> map_node_to_node3;
+  std::pair<size_t, TreeNodeElement<ThresholdType>*> pair;
   size_t last_node3 = nodes3_.size();
   nodes3_.reserve(nodes_.size() / 3);
-  stack.push_back(std::pair<size_t, TreeNodeElement<ThresholdType>*>(roots_[root_id] - nodes_.begin(), roots_[root_id]));
+  stack.push_back(std::pair<size_t, TreeNodeElement<ThresholdType>*>(roots_[root_id] - &(nodes_[0]), roots_[root_id]));
   while (!stack.empty()) {
-    pair = stack.pop_front();
+    pair = stack.front();
+    stack.pop_front();
     ORT_ENFORCE(map_node_to_node3.find(pair.first) == map_node_to_node3.end(),
                 "This node index ", pair.first, " was already added as a TreeNodeElement3.");
     node = pair.second;
@@ -423,31 +424,34 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
       continue;
     true_node = node + node->truenode_inc_or_first_weight;
     false_node = node + node->falsenode_inc_or_n_weights;
-    if (!true_node->is_node_leaf() || !false_node->is_node_leaf())
+    if (!true_node->is_not_leaf() || !false_node->is_not_leaf())
       continue;
     TreeNodeElement3<ThresholdType> node3;
-    node3.node_inc_or_weight = {pair.first + node->falsenode_inc_or_n_weights + false_node->falsenode_inc_or_n_weights,
-                                pair.first + node->falsenode_inc_or_n_weights + false_node->true_node_inc_or_n_weights,
-                                pair.first + node->true_node_inc_or_n_weights + true_node->falsenode_inc_or_n_weights,
-                                pair.first + node->true_node_inc_or_n_weights + true_node->true_node_inc_or_n_weights};
-    node3.feature_id = {false_node->feature_id,
-                        true_node->feature_id,
-                        node->feature_id};
-    node3.value_or_unique_weight = {
-        false_node->value_or_unique_weight,
-        true_node->value_or_unique_weight,
-        node->value_or_unique_weight};
-    node3.flags = node->node() |
+    node3.node_inc_or_weight[0] = static_cast<int32_t>(pair.first) + node->falsenode_inc_or_n_weights + false_node->falsenode_inc_or_n_weights;
+    node3.node_inc_or_weight[1] = static_cast<int32_t>(pair.first) + node->falsenode_inc_or_n_weights + false_node->truenode_inc_or_first_weight;
+    node3.node_inc_or_weight[2] = static_cast<int32_t>(pair.first) + node->truenode_inc_or_first_weight + true_node->falsenode_inc_or_n_weights;
+    node3.node_inc_or_weight[3] = static_cast<int32_t>(pair.first) + node->truenode_inc_or_first_weight + true_node->truenode_inc_or_first_weight;
+
+    node3.feature_id[0] = false_node->feature_id;
+    node3.feature_id[1] = true_node->feature_id;
+    node3.feature_id[2] = node->feature_id;
+
+    node3.value_or_unique_weight[0] = false_node->value_or_unique_weight;
+    node3.value_or_unique_weight[1] = true_node->value_or_unique_weight;
+    node3.value_or_unique_weight[2] = node->value_or_unique_weight;
+
+    node3.flags = node->mode() |
                   (false_node->is_missing_track_true() * MissingTrack3::kTrue0) |
                   (true_node->is_missing_track_true() * MissingTrack3::kTrue1) |
                   (node->is_missing_track_true() * MissingTrack3::kTrue2);
+
     auto node3_index = nodes3_.size();
     map_node_to_node3[pair.first] = node3_index;
     map_node_to_node3[node->truenode_inc_or_first_weight] = node3_index;
     map_node_to_node3[node->falsenode_inc_or_n_weights] = node3_index;
     bool add = true;
     for (size_t i = 0; i < 4; ++i) {
-      stack.push_back(std::pair<size_t, TreeNodeElement<ThresholdType>*>(node3.node_inc_or_weight[i], nodes_[node3.node_inc_or_weight[i]]));
+      stack.push_back(std::pair<size_t, TreeNodeElement<ThresholdType>*>(node3.node_inc_or_weight[i], &(nodes_[node3.node_inc_or_weight[i]])));
       if (map_node_to_node3.find(node3.node_inc_or_weight[i]) != map_node_to_node3.end()) {
         // A node already points to another node converted into node3.
         // This happens when a child node points to another node at a lower level (closer to the root).
@@ -462,28 +466,28 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
     nodes3_.emplace_back(node3);
     to_remove.push_back(pair.first);
     to_remove.push_back(pair.first + node->falsenode_inc_or_n_weights);
-    to_remove.push_back(pair.first + node->true_node_inc_or_n_weights);
+    to_remove.push_back(pair.first + node->truenode_inc_or_first_weight);
   }
   // Every node3 points to a node. It needs to be changed.
   int changed;
   for (size_t i = last_node3; i < nodes3_.size(); ++i) {
-    TreeNodeElement3<ThresholdType>& n3 = nodes_[i];
+    TreeNodeElement3<ThresholdType>& n3 = nodes3_[i];
     changed = 0;
-    for (auto i = 0; i < 4; ++i) {
-      auto it = map_node_to_node3.find(n3.node_inc_or_weight[i]);
+    for (size_t j = 0; j < 4; ++j) {
+      auto it = map_node_to_node3.find(n3.node_inc_or_weight[j]);
       if (it == map_node_to_node3.end())
         break;
       ++changed;
     }
     if (changed == 4) {
       n3.flags |= MissingTrack3::kChildren3;
-      for (auto i = 0; i < 4; ++i) {
-        auto it = map_node_to_node3.find(n3.node_inc_or_weight[i]);
-        n3.node_inc_or_weight[i] = it->second;
+      for (size_t j = 0; j < 4; ++j) {
+        auto it = map_node_to_node3.find(n3.node_inc_or_weight[j]);
+        n3.node_inc_or_weight[j] = static_cast<int32_t>(it->second);
       }
     }
   }
-  return nodes3_.size() > last_node3 ? last_node3 : -1;
+  return nodes3_.size() > last_node3 ? static_cast<int>(last_node3) : -1;
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
