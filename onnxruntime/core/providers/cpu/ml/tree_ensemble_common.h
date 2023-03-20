@@ -370,7 +370,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   }
 
   // Use optimized implementation.
-  ConvertTreeIntoTree3();
+  //ConvertTreeIntoTree3();
   return Status::OK();
 }
 
@@ -378,7 +378,7 @@ template <typename InputType, typename ThresholdType, typename OutputType>
 void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeIntoTree3() {
   roots3_.clear();
   nodes3_.clear();
-  if (!same_mode_ || (nodes_.size() >= (2 << 30))) {
+  if (!same_mode_ || (nodes_.size() >= (static_cast<size_t>(2) << 30))) {
     // Not applicable in that case.
     return;
   }
@@ -808,7 +808,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave3(
   const TreeNodeElement3<ThresholdType>* root3 = roots3_[root_id];
   const TreeNodeElement<ThresholdType>* root;
   ORT_ENFORCE(root3 != nullptr, "No optimization for tree ", root_id, ".");
-  InputType features[3];
+  InputType features[4];
   int node_id;
   switch (root3->mode()) {
     case NODE_MODE::BRANCH_LEQ:
