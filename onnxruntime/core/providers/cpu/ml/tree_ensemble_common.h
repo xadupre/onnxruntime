@@ -420,12 +420,14 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
     ORT_ENFORCE(map_node_to_node3.find(pair.first) == map_node_to_node3.end(),
                 "This node index ", pair.first, " was already added as a TreeNodeElement3.");
     node = pair.second;
-    if (!node->is_not_leaf())
+    if (!node->is_not_leaf()) {
       continue;
+    }
     true_node = node + node->truenode_inc_or_first_weight;
     false_node = node + node->falsenode_inc_or_n_weights;
-    if (!true_node->is_not_leaf() || !false_node->is_not_leaf())
+    if (!true_node->is_not_leaf() || !false_node->is_not_leaf()) {
       continue;
+    }
     TreeNodeElement3<ThresholdType> node3;
     node3.node_inc_or_weight[0] = static_cast<int32_t>(pair.first) + node->falsenode_inc_or_n_weights + false_node->falsenode_inc_or_n_weights;
     node3.node_inc_or_weight[1] = static_cast<int32_t>(pair.first) + node->falsenode_inc_or_n_weights + false_node->truenode_inc_or_first_weight;
@@ -446,23 +448,26 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
                   (node->is_missing_track_true() * MissingTrack3::kTrue2);
 
     auto node3_index = nodes3_.size();
-    map_node_to_node3[pair.first] = node3_index;
-    map_node_to_node3[node->truenode_inc_or_first_weight] = node3_index;
-    map_node_to_node3[node->falsenode_inc_or_n_weights] = node3_index;
     bool add = true;
     for (size_t i = 0; i < 4; ++i) {
-      stack.push_back(std::pair<size_t, TreeNodeElement<ThresholdType>*>(node3.node_inc_or_weight[i], &(nodes_[node3.node_inc_or_weight[i]])));
-      if (map_node_to_node3.find(node3.node_inc_or_weight[i]) != map_node_to_node3.end()) {
+      auto it = map_node_to_node3.find(node3.node_inc_or_weight[i]);
+      if (it != map_node_to_node3.end()) {
         // A node already points to another node converted into node3.
         // This happens when a child node points to another node at a lower level (closer to the root).
         add = false;
         break;
       }
     }
-    if (add) {
+    if (!add) {
       // Unable to handle this node.
       continue;
     }
+    for (size_t i = 0; i < 4; ++i) {
+      stack.push_back(std::pair<size_t, TreeNodeElement<ThresholdType>*>(node3.node_inc_or_weight[i], &(nodes_[node3.node_inc_or_weight[i]])));
+    }
+    map_node_to_node3[pair.first] = node3_index;
+    map_node_to_node3[static_cast<int32_t>(pair.first) + node->truenode_inc_or_first_weight] = node3_index;
+    map_node_to_node3[static_cast<int32_t>(pair.first) + node->falsenode_inc_or_n_weights] = node3_index;
     nodes3_.emplace_back(node3);
     to_remove.push_back(pair.first);
     to_remove.push_back(pair.first + node->falsenode_inc_or_n_weights);
