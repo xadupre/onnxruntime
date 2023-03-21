@@ -108,11 +108,11 @@ enum MissingTrack3 : uint8_t {
 template <typename T>
 struct TreeNodeElement3 {
   // This structure is equivalent to 3 nodes TreeNodeElement.
-  // It allows to save (6*4)/(16*4) ~ 27% reduction.
-  int feature_id[3];
+  // It allows to save (11*4+4)/((4*4+1)*3)=48/51 ~ 5% reduction.
   T thresholds[4];
   int32_t node_id[4];
-  uint8_t flags;
+  int feature_id[3];
+  uint32_t flags;
 
   inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
   inline bool is_not_leaf() const { return !(flags & NODE_MODE::LEAF); }

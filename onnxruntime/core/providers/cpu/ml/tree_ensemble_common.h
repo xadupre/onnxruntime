@@ -8,6 +8,8 @@
 #include "core/platform/threadpool.h"
 #include "tree_ensemble_helper.h"
 
+#include <xmmintrin.h>
+
 namespace onnxruntime {
 namespace ml {
 namespace detail {
@@ -439,8 +441,8 @@ int TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ConvertTreeNodeEle
     node3.feature_id[2] = node->feature_id;
 
     node3.thresholds[0] = false_node->value_or_unique_weight;
-    node3.thresholds[1] = true_node->value_or_unique_weight;
-    node3.thresholds[2] = node->value_or_unique_weight;
+    node3.thresholds[2] = true_node->value_or_unique_weight;
+    node3.thresholds[1] = node->value_or_unique_weight;
     node3.thresholds[3] = node->value_or_unique_weight;  // repeated for AVX
 
     node3.flags = node->mode() |
@@ -795,12 +797,76 @@ inline bool _isnan_(int32_t) { return false; }
 template <typename InputType, typename ThresholdType>
 inline int GetLeave3IndexLEQ(InputType* features, const TreeNodeElement3<ThresholdType>* node3, const InputType* x_data) {
   features[0] = x_data[node3->feature_id[0]];
-  features[1] = x_data[node3->feature_id[1]];
-  features[2] = x_data[node3->feature_id[2]];
-  return node3->node_id[features[2] <= node3->thresholds[2]
-                            ? (features[1] <= node3->thresholds[1] ? 3 : 2)
+  features[1] = x_data[node3->feature_id[2]];
+  features[2] = x_data[node3->feature_id[1]];
+  // features[3] = x_data[node3->feature_id[2]];
+  return node3->node_id[features[1] <= node3->thresholds[1]
+                            ? (features[2] <= node3->thresholds[2] ? 3 : 2)
                             : (features[0] <= node3->thresholds[0] ? 1 : 0)];
 }
+
+#if 0
+template <>
+inline int GetLeave3IndexLEQ(float* features, const TreeNodeElement3<float>* node3, const float* x_data) {
+  features[0] = x_data[node3->feature_id[0]];
+  features[1] = x_data[node3->feature_id[2]];
+  features[2] = x_data[node3->feature_id[1]];
+  features[3] = x_data[node3->feature_id[2]];
+
+  // maybe we could align these pointers
+  /*
+  __m128 c1 = _mm_load_ps1(features);
+  __m128 c2 = _mm_load_ps1(node3->thresholds);
+  __m128 cmp = _mm_cmpgt_ps(c2, c1);  // does not work
+  float out[4];
+  _mm_store_ps1(out, cmp);
+  __m128i res = _mm_castps_si128(cmp);
+  int32_t iout[4];
+  _mm_storeu_si128((__m128i*)iout, res);
+  __m128i res2 = _mm_cmpeq_epi32(res, _mm_set1_epi32(-1));
+  int32_t iout2[4];
+  _mm_storeu_si128((__m128i*)iout2, res2);
+  cmp = _mm_castsi128_ps(res2);
+  */
+  __m128i c1 = _mm_loadu_si128((const __m128i*)features);           // _mm_load_si128 aligned
+  __m128i c2 = _mm_loadu_si128((const __m128i*)node3->thresholds);  // _mm_load_si128 aligned
+  __m128i zero = _mm_set1_epi32(0);
+  __m128i signc1 = _mm_cmplt_epi32(c1, zero);
+  __m128i signc2 = _mm_cmplt_epi32(c2, zero);
+  __m128i cmp_sign = _mm_cmplt_epi32(signc1, signc2);
+  __m128i cmp = _mm_cmpgt_epi32(c2, c1);
+  __m128i final = _mm_xor_si128(cmp, cmp_sign);
+
+  uint32_t s1[4]={5, 6, 7, 8};
+  _mm_storeu_si128((__m128i*)s1, signc1);
+  uint32_t s2[4] = {51, 61, 71, 81};
+  _mm_storeu_si128((__m128i*)s2, signc2);
+
+  uint32_t iout[4] = {52, 62, 72, 82};
+  _mm_storeu_si128((__m128i*)iout, cmp);
+  uint32_t iout2[4] = {53, 63, 73, 83};
+  _mm_storeu_si128((__m128i*)iout2, cmp_sign);
+  uint32_t iout3[4] = {54, 64, 74, 84};
+  _mm_storeu_si128((__m128i*)iout3, final);
+
+  int ind = _mm_movemask_ps(_mm_castsi128_ps(final));
+  int ind2 = (ind >> (ind & 2)) & 3;
+  auto exp = features[1] <= node3->thresholds[1]
+                 ? (features[2] <= node3->thresholds[2] ? 3 : 2)
+                 : (features[0] <= node3->thresholds[0] ? 1 : 0);
+  ORT_ENFORCE(exp == ind2, "\n--exp=", exp, " ind=", ind, " ind2=", ind2, " FF\n",
+              features[0], "<=", node3->thresholds[0], " -- ",
+              features[1], "<=", node3->thresholds[1], " -- ",
+              features[2], "<=", node3->thresholds[2], " -- ",
+              features[3], "<=", node3->thresholds[3], " --\n",
+              s1[0], " # ", s1[1], " # ", s1[2], " # ", s1[3], "\n",
+              s2[0], " # ", s2[1], " # ", s2[2], " # ", s2[3],
+              "\n???? ", iout[0], ",", iout[1], ",", iout[2], ",", iout[3],
+              "\n???? ", iout2[0], ",", iout2[1], ",", iout2[2], ",", iout2[3],
+              "\n???? ", iout3[0], ",", iout3[1], ",", iout3[2], ",", iout3[3]);
+  return node3->node_id[ind2];
+}
+#endif
 
 template <typename InputType, typename ThresholdType, typename OutputType>
 const TreeNodeElement<ThresholdType>*
