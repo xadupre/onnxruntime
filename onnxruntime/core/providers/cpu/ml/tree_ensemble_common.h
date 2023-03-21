@@ -14,6 +14,25 @@ namespace onnxruntime {
 namespace ml {
 namespace detail {
 
+template <class Tp>
+struct TreeAlloc {
+  typedef Tp value_type;
+
+  TreeAlloc() = default;
+  template <class T>
+  TreeAlloc(const TreeAlloc<T>&) {}
+
+  Tp* allocate(std::size_t n) {
+    n *= sizeof(Tp);
+    Tp* p = (Tp*)AllocatorDefaultAlloc(n);
+    return p;
+  }
+
+  void deallocate(Tp* p, std::size_t) {
+    AllocatorDefaultFree(p);
+  }
+};
+
 class TreeEnsembleCommonAttributes {
  public:
   int64_t get_target_or_class_count() const { return this->n_targets_or_classes_; }
@@ -43,7 +62,7 @@ template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
  protected:
   std::vector<ThresholdType> base_values_;
-  std::vector<TreeNodeElement<ThresholdType>> nodes_;
+  std::vector<TreeNodeElement<ThresholdType>, TreeAlloc<TreeNodeElement<ThresholdType>>> nodes_;
   // Type of weights should be a vector of OutputType. Onnx specifications says it must be float.
   // Lightgbm requires a double to do the summation of all trees predictions. That's why
   // `ThresholdType` is used as well for output type (double as well for lightgbm) and not `OutputType`.
@@ -51,8 +70,8 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   std::vector<TreeNodeElement<ThresholdType>*> roots_;
 
   // optimisation
+  std::vector<TreeNodeElement3<ThresholdType>, TreeAlloc<TreeNodeElement3<ThresholdType>>> nodes3_;
   std::vector<TreeNodeElement3<ThresholdType>*> roots3_;
-  std::vector<TreeNodeElement3<ThresholdType>> nodes3_;
 
  public:
   TreeEnsembleCommon() {}
