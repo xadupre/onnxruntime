@@ -575,6 +575,9 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   const InputType* x_data = X->Data<InputType>();
   int64_t* label_data = label == nullptr ? nullptr : label->MutableData<int64_t>();
   auto max_num_threads = concurrency::ThreadPool::DegreeOfParallelism(ttp);
+  auto parallel_tree_n = (parallel_tree_N_ / 4) * max_num_threads;
+  if (parallel_tree_n < parallel_tree_N_)
+    parallel_tree_n = parallel_tree_N_;
 
   if (n_targets_or_classes_ == 1) {
     if (N == 1) {
@@ -609,12 +612,12 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
       // In that case, looping first on tree or on data is almost the same. That's why the first loop
       // split into batch so that every batch holds on caches, then loop on trees and finally loop
       // on the batch rows.
-      std::vector<ScoreValue<ThresholdType>> scores(parallel_tree_N_);
+      std::vector<ScoreValue<ThresholdType>> scores(parallel_tree_n);
       size_t j;
       int64_t i, batch, batch_end;
 
-      for (batch = 0; batch < N; batch += parallel_tree_N_) {
-        batch_end = std::min(N, batch + parallel_tree_N_);
+      for (batch = 0; batch < N; batch += parallel_tree_n) {
+        batch_end = std::min(N, batch + parallel_tree_n);
         for (i = batch; i < batch_end; ++i) {
           scores[SafeInt<ptrdiff_t>(i - batch)] = {0, 0};
         }
@@ -628,12 +631,12 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
                               label_data == nullptr ? nullptr : (label_data + i));
         }
       }
-    } else if (n_trees_ > max_num_threads) { /* section D: 1 output, 2+ rows and enough trees to parallelize */
+    } else if (n_trees_ > max_num_threads && n_trees_ >= parallel_tree_) { /* section D: 1 output, 2+ rows and enough trees to parallelize */
       auto num_threads = std::min<int32_t>(max_num_threads, SafeInt<int32_t>(n_trees_));
       std::vector<ScoreValue<ThresholdType>> scores(SafeInt<size_t>(num_threads) * N);
       int64_t end_n, begin_n = 0;
       while (begin_n < N) {
-        end_n = std::min(N, begin_n + parallel_tree_N_);
+        end_n = std::min(N, begin_n + parallel_tree_n);
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
             num_threads,
@@ -706,15 +709,15 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
         agg.FinalizeScores(scores[0], z_data, -1, label_data);
       }
     } else if (N <= parallel_N_ || max_num_threads == 1) { /* section C2: 2+ outputs, 2+ rows, not enough rows to parallelize */
-      std::vector<InlinedVector<ScoreValue<ThresholdType>>> scores(parallel_tree_N_);
+      std::vector<InlinedVector<ScoreValue<ThresholdType>>> scores(parallel_tree_n);
       size_t j, limit;
       int64_t i, batch, batch_end;
-      batch_end = std::min(N, static_cast<int64_t>(parallel_tree_N_));
+      batch_end = std::min(N, static_cast<int64_t>(parallel_tree_n));
       for (i = 0; i < batch_end; ++i) {
         scores[SafeInt<ptrdiff_t>(i)].resize(onnxruntime::narrow<size_t>(n_targets_or_classes_));
       }
-      for (batch = 0; batch < N; batch += parallel_tree_N_) {
-        batch_end = std::min(N, batch + parallel_tree_N_);
+      for (batch = 0; batch < N; batch += parallel_tree_n) {
+        batch_end = std::min(N, batch + parallel_tree_n);
         for (i = batch; i < batch_end; ++i) {
           std::fill(scores[SafeInt<ptrdiff_t>(i - batch)].begin(), scores[SafeInt<ptrdiff_t>(i - batch)].end(), ScoreValue<ThresholdType>({0, 0}));
         }
@@ -729,12 +732,12 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
         }
       }
 
-    } else if (n_trees_ >= max_num_threads) { /* section: D2: 2+ outputs, 2+ rows, enough trees to parallelize*/
+    } else if (n_trees_ >= max_num_threads && n_trees_ >= parallel_tree_) { /* section: D2: 2+ outputs, 2+ rows, enough trees to parallelize*/
       auto num_threads = std::min<int32_t>(max_num_threads, SafeInt<int32_t>(n_trees_));
       std::vector<InlinedVector<ScoreValue<ThresholdType>>> scores(SafeInt<size_t>(num_threads) * N);
       int64_t end_n, begin_n = 0;
       while (begin_n < N) {
-        end_n = std::min(N, begin_n + parallel_tree_N_);
+        end_n = std::min(N, begin_n + parallel_tree_n);
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
             num_threads,
