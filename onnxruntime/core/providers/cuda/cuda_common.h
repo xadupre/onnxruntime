@@ -43,10 +43,22 @@ class ToCudaType<MLFloat16> {
  public:
   typedef half MappedType;
   static MappedType FromFloat(float f) {
-    uint16_t h = math::floatToHalf(f);
-    return *reinterpret_cast<MappedType*>(&h);
+    return __float2half(f);
   }
 };
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+
+template <>
+class ToCudaType<BFloat16> {
+ public:
+  typedef BFloat16 MappedType;
+  static MappedType FromFloat(float f) {
+    return BFloat16(f);
+  }
+};
+
+#endif
 
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
   int stride = 1;
