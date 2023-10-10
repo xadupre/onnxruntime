@@ -35,6 +35,7 @@
         "^test_batchnorm_epsilon_training_mode",
         "^test_batchnorm_example_old",
         "^test_batchnorm_example_training_mode",
+        "^test_col2im_pads",  // still one wrong value coming from the backtest example
         "^test_gathernd_example_int32_batch_dim1",
         "^test_max_int16",
         "^test_max_int8",
@@ -102,7 +103,6 @@
         "^test_if_opt",
         "^test_loop16_seq_none",
         "^test_identity_opt",
-        "^test_col2im_pads*",           // remove this when using ONNX with this: https://github.com/onnx/onnx/pull/4769
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
         "^test_roialign_mode_max", // TODO: Remove once onnx test is fixed
@@ -164,8 +164,6 @@
         "^test_edge_pad*",
         "^test_equal_bcast*",
         "^test_equal*",
-        "^test_equal_string_broadcast*",
-        "^test_equal_string*",
         "^test_reflect_pad*",
         "^test_resize_downsample_scales_cubic_antialias*",
         "^test_resize_downsample_scales_linear_antialias*",
@@ -185,55 +183,9 @@
         "^test_wrap_pad*",
         "^test_basic_deform_conv_with_padding*",
         "^test_basic_deform_conv_without_padding*",
-        "^test_cast_DOUBLE_to_FLOAT*",
-        "^test_cast_FLOAT8E4M3FNUZ_to_FLOAT*",
-        "^test_cast_FLOAT8E4M3FN_to_FLOAT*",
-        "^test_cast_FLOAT8E5M2FNUZ_to_FLOAT*",
-        "^test_cast_FLOAT8E5M2_to_FLOAT*",
-        "^test_cast_FLOAT_to_DOUBLE*",
-        "^test_cast_FLOAT_to_FLOAT8E4M3FNUZ*",
-        "^test_cast_FLOAT_to_FLOAT8E4M3FN*",
-        "^test_cast_FLOAT_to_FLOAT8E5M2FNUZ*",
-        "^test_cast_FLOAT_to_FLOAT8E5M2*",
-        "^test_cast_STRING_to_FLOAT*",
-        "^test_cast_no_saturate_FLOAT_to_FLOAT8E4M3FNUZ*",
-        "^test_cast_no_saturate_FLOAT_to_FLOAT8E4M3FN*",
-        "^test_cast_no_saturate_FLOAT_to_FLOAT8E5M2FNUZ*",
-        "^test_cast_no_saturate_FLOAT_to_FLOAT8E5M2*",
-        "^test_castlike_DOUBLE_to_FLOAT*",
-        "^test_castlike_DOUBLE_to_FLOAT_expanded*",
-        "^test_castlike_FLOAT8E4M3FNUZ_to_FLOAT*",
-        "^test_castlike_FLOAT8E4M3FNUZ_to_FLOAT_expanded*",
-        "^test_castlike_FLOAT8E4M3FN_to_FLOAT*",
-        "^test_castlike_FLOAT8E4M3FN_to_FLOAT_expanded*",
-        "^test_castlike_FLOAT8E5M2FNUZ_to_FLOAT*",
-        "^test_castlike_FLOAT8E5M2FNUZ_to_FLOAT_expanded*",
-        "^test_castlike_FLOAT8E5M2_to_FLOAT*",
-        "^test_castlike_FLOAT8E5M2_to_FLOAT_expanded*",
-        "^test_castlike_FLOAT_to_DOUBLE*",
-        "^test_castlike_FLOAT_to_DOUBLE_expanded*",
-        "^test_castlike_FLOAT_to_FLOAT8E4M3FNUZ*",
-        "^test_castlike_FLOAT_to_FLOAT8E4M3FNUZ_expanded*",
-        "^test_castlike_FLOAT_to_FLOAT8E4M3FN*",
-        "^test_castlike_FLOAT_to_FLOAT8E4M3FN_expanded*",
-        "^test_castlike_FLOAT_to_FLOAT8E5M2FNUZ*",
-        "^test_castlike_FLOAT_to_FLOAT8E5M2FNUZ_expanded*",
-        "^test_castlike_FLOAT_to_FLOAT8E5M2*",
-        "^test_castlike_FLOAT_to_FLOAT8E5M2_expanded*",
-        "^test_castlike_STRING_to_FLOAT*",
-        "^test_castlike_STRING_to_FLOAT_expanded*",
         "^test_constant_pad_negative_axes*",
         "^test_deform_conv_with_mask_bias*",
         "^test_deform_conv_with_multiple_offset_groups*",
-        "^test_dequantizelinear_axis*",
-        "^test_dequantizelinear*",
-        "^test_dequantizelinear_e4m3fn*",
-        "^test_dequantizelinear_e5m2*",
-        "^test_identity*",
-        "^test_quantizelinear_axis*",
-        "^test_quantizelinear*",
-        "^test_quantizelinear_e4m3fn*",
-        "^test_quantizelinear_e5m2*",
         "^test_reshape_allowzero_reordered*",
         "^test_reshape_extended_dims*",
         "^test_reshape_negative_dim*",
@@ -244,12 +196,8 @@
         "^test_reshape_reordered_last_dims*",
         "^test_reshape_zero_and_negative_dim*",
         "^test_reshape_zero_dim*",
-        "^test_size*",
-        "^test_size_example*",
         // TODO: fialures with Windows GPU CI Pipeline that are introduced with ONNX opset 19. Need to be fixed before ORT 1.15 release.
         "^test_averagepool_*",
-        "^test_equal_*",
-        "^test_equal_*",
         "^test_wrap_pad_cuda",
         "^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cuda",
         "^test_resize_downsample_scales_cubic_antialias_cuda",
@@ -285,7 +233,64 @@
         "^test_resize_upsample_sizes_nearest_cuda",
         "^test_resize_upsample_sizes_nearest_floor_align_corners_cuda",
         "^test_resize_upsample_sizes_nearest_not_larger_cuda",
-        "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cuda"
+        "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cuda",
+        // onnx 1.15 (opset 20) new and updated op tests
+        "^test_ai_onnx_ml_label_encoder_string_int",
+        "^test_ai_onnx_ml_label_encoder_string_int_no_default",
+        "^test_ai_onnx_ml_label_encoder_tensor_mapping",
+        "^test_ai_onnx_ml_label_encoder_tensor_value_only_mapping",
+        "^test_gridsample_aligncorners_true",
+        "^test_gridsample_bicubic_align_corners_0_additional_1",
+        "^test_gridsample_bicubic_align_corners_1_additional_1",
+        "^test_gridsample_bicubic",
+        "^test_gridsample_bilinear_align_corners_0_additional_1",
+        "^test_gridsample_bilinear_align_corners_1_additional_1",
+        "^test_gridsample_bilinear",
+        "^test_gridsample_border_padding",
+        "^test_gridsample",
+        "^test_gridsample_nearest_align_corners_0_additional_1",
+        "^test_gridsample_nearest_align_corners_1_additional_1",
+        "^test_gridsample_nearest",
+        "^test_gridsample_reflection_padding",
+        "^test_gridsample_volumetric_bilinear_align_corners_0",
+        "^test_gridsample_volumetric_bilinear_align_corners_1",
+        "^test_gridsample_volumetric_nearest_align_corners_0",
+        "^test_gridsample_volumetric_nearest_align_corners_1",
+        "^test_gridsample_zeros_padding",
+        "^test_image_decoder_decode_bmp_rgb",
+        "^test_image_decoder_decode_jpeg2k_rgb",
+        "^test_image_decoder_decode_jpeg_bgr",
+        "^test_image_decoder_decode_jpeg_grayscale",
+        "^test_image_decoder_decode_jpeg_rgb",
+        "^test_image_decoder_decode_png_rgb",
+        "^test_image_decoder_decode_pnm_rgb",
+        "^test_image_decoder_decode_tiff_rgb",
+        "^test_image_decoder_decode_webp_rgb",
+        "^test_regex_full_match_basic",
+        "^test_regex_full_match_email_domain",
+        "^test_regex_full_match_empty",
+        "^test_string_concat_broadcasting",
+        "^test_string_concat",
+        "^test_string_concat_empty_string",
+        "^test_string_concat_utf8",
+        "^test_string_concat_zero_dimensional",
+        "^test_string_split_basic",
+        "^test_string_split_consecutive_delimiters",
+        "^test_string_split_empty_string_delimiter",
+        "^test_string_split_empty_tensor",
+        "^test_string_split_maxsplit",
+        "^test_string_split_no_delimiter",
+        "^test_dft_axis",
+        "^test_dft",
+        "^test_dft_inverse",
+        "^test_isinf",
+        "^test_isinf_float16",
+        "^test_isinf_negative",
+        "^test_isinf_positive",
+        "^test_isnan",
+        "^test_isnan_float16",
+        "^test_reduce_max_bool_inputs",
+        "^test_reduce_min_bool_inputs"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -368,7 +373,24 @@
         "^test_layer_normalization_4d_axis_negative_1_expanded_ver18_cpu",
         "^test_layer_normalization_4d_axis_negative_2_expanded_ver18_cpu",
         "^test_layer_normalization_4d_axis_negative_3_expanded_ver18_cpu",
-        "^test_layer_normalization_default_axis_expanded_ver18_cpu"
+        "^test_layer_normalization_default_axis_expanded_ver18_cpu",
+        // onnx 1.15 (opset 20) new and updated op tests (test_affine_grid_???_expanded utilizes ConstantOfShape so it needs to be skipped as well)
+        // https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=1139541&view=logs&j=249e9d58-0012-5814-27cf-6a201adbd9cf&t=bb33e81f-0527-50e0-0fd2-e94f509f0a82
+        // only supported with cpu provider
+        "^test_affine_grid_2d",
+        "^test_affine_grid_2d_align_corners",
+        "^test_affine_grid_2d_align_corners_expanded",
+        "^test_affine_grid_2d_expanded",
+        "^test_affine_grid_3d",
+        "^test_affine_grid_3d_align_corners",
+        "^test_affine_grid_3d_align_corners_expanded",
+        "^test_affine_grid_3d_expanded",
+        "^test_constantofshape_float_ones",
+        "^test_constantofshape_int_shape_zero",
+        "^test_constantofshape_int_zeros",
+        // https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=1141563&view=logs&j=a018b46d-e41a-509d-6581-c95fdaa42fcd&t=d61c1d37-f101-5d28-982f-e5931b720302
+        "^test_gelu_tanh_2_cpu",
+        "^test_gelu_tanh_2_expanded_cpu"
     ],
     "current_failing_tests_NNAPI": [
         "^test_maxpool_2d_uint8",
@@ -442,6 +464,14 @@
         "^test_squeeze_negative_axes"
     ],
     "current_failing_tests_OPENVINO_CPU_FP32": [
+        "^test_affine_grid_2d_align_corners",
+        "^test_affine_grid_2d_align_corners_expanded",
+        "^test_affine_grid_2d",
+        "^test_affine_grid_2d_expanded",
+        "^test_affine_grid_3d_align_corners",
+        "^test_affine_grid_3d_align_corners_expanded",
+        "^test_affine_grid_3d",
+        "^test_affine_grid_3d_expanded",
         "^test_operator_permute2",
         "^test_operator_repeat",
         "^test_operator_repeat_dim_overflow",
@@ -475,7 +505,13 @@
         "^test_resize_downsample_scales_linear", // Runs but there's accuracy mismatch
         "^test_training_dropout_default_mask", // Runs but there's accuracy mismatch
         "^test_training_dropout_mask", // Runs but there's accuracy mismatch
-        "^test_training_dropout_default" // Runs but there's accuracy mismatch
+        "^test_training_dropout_default", // Runs but there's accuracy mismatch
+        "^test_center_crop_pad_crop_negative_axes_hwc*", // failed due to new types or shape infer with negative axis for CenterCropPad.
+        "^test_center_crop_pad_crop_negative_axes_hwc_expanded*", // failed due to new types or shape infer with negative axis for CenterCropPad.
+        "test_range_int32_type_negative_delta_expanded_cpu", // Error but not a failure.
+        "test_range_float_type_positive_delta_expanded_cpu", // Error but not a failure.
+        "test_scan_sum_cpu", // Disabled due to output mismatch with tolerance.
+        "test_scan9_sum_cpu" // Disabled due to output mismatch with tolerance.
     ],
     "current_failing_tests_OPENVINO_opset18": [
         // pending opset 18 support, RUNTIME_EXCEPTION : Encountered unknown exception in Initialize()
@@ -615,7 +651,22 @@
         "^test_sequence_map_identity_1_sequence_cpu",
         "^test_sequence_map_identity_1_sequence_expanded_cpu",
         "^test_sequence_map_identity_2_sequences_cpu",
-        "^test_sequence_map_identity_2_sequences_expanded_cpu"
+        "^test_sequence_map_identity_2_sequences_expanded_cpu",
+        // onnx 1.15 (opset 20) new and updated op tests (test_affine_grid_???_expanded utilizes ConstantOfShape so it needs to be skipped as well)
+        // https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=1139542&view=logs&j=3032dfba-5baf-5872-0871-2e69cb7f4b6a&t=f0d05deb-fc26-5aaf-e43e-7db2764c07da
+        // only supported with cpu provider
+        "^test_affine_grid_2d",
+        "^test_affine_grid_2d_align_corners",
+        "^test_affine_grid_2d_align_corners_expanded",
+        "^test_affine_grid_2d_expanded",
+        "^test_affine_grid_3d",
+        "^test_affine_grid_3d_align_corners",
+        "^test_affine_grid_3d_align_corners_expanded",
+        "^test_affine_grid_3d_expanded",
+        "^test_constantofshape_float_ones",
+        "^test_constantofshape_int_shape_zero",
+        "^test_constantofshape_int_zeros"
+
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
@@ -718,7 +769,21 @@
         // The test cases for Bernoulli op are for informational purpose. The generator operator is
         // non-deterministic and may not produce the same values in different implementations
         // even if a seed is specified.
-        "^test_bernoulli_*"
+        "^test_bernoulli_*",
+        // No support for float8 in numpy
+        "^test_cast_no_saturate*",
+        "^test_cast_FLOAT8*",
+        "^test_castlike_FLOAT8*",
+        "^test_cast_FLOAT_to_FLOAT8*",
+        "^test_castlike_FLOAT_to_FLOAT8*",
+        "^test_cast_FLOAT16_to_FLOAT8*",
+        "^test_castlike_FLOAT16_to_FLOAT8*",
+        "^test_dequantizelinear_e*",
+        "^test_quantizelinear_e*",
+        "^test_castlike_FLOAT_to_BFLOAT16*",
+        "^test_castlike_FLOAT_to_STRING*",
+        "^test_castlike_BFLOAT16_to*",
+        "^test_castlike_FLOAT_to_BFLOAT16*"
     ],
     "failing_permanently_nodejs_binding": [
         // those test cases are no longer available in later opset version

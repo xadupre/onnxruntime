@@ -10,12 +10,46 @@
 namespace onnxruntime {
 namespace training {
 namespace api {
+
+struct ModelIdentifiers {
+  // ModelIdentifiers struct enables an easy way to store and identify the models used for training, evaluation
+  // and model updates(optimizer model).
+  // The model can be specified by a path to the model file or by a span of bytes containing the model data.
+  // Training model is required, evaluation and optimizer models are optional.
+  std::variant<std::string, gsl::span<const uint8_t>> train_model;
+  std::variant<std::optional<std::string>, gsl::span<const uint8_t>> eval_model;
+  std::variant<std::optional<std::string>, gsl::span<const uint8_t>> optim_model;
+
+  ModelIdentifiers(std::variant<std::string, gsl::span<const uint8_t>> training_model,
+                   std::variant<std::optional<std::string>, gsl::span<const uint8_t>> evaluation_model,
+                   std::variant<std::optional<std::string>, gsl::span<const uint8_t>> optimzer_model)
+      : train_model(training_model), eval_model(evaluation_model), optim_model(optimzer_model) {}
+
+  bool IsModelAvailable(const std::variant<std::optional<std::string>, gsl::span<const uint8_t>>& model) const {
+    if ((std::holds_alternative<std::optional<std::string>>(model) &&
+         std::get<std::optional<std::string>>(model).has_value()) ||
+        (std::holds_alternative<gsl::span<const uint8_t>>(model) &&
+         std::get<gsl::span<const uint8_t>>(model).size() > 0)) {
+      return true;
+    }
+    return false;
+  }
+
+  bool IsEvalModelAvailable() const {
+    return IsModelAvailable(eval_model);
+  }
+
+  bool IsOptimizerModelAvailable() const {
+    return IsModelAvailable(optim_model);
+  }
+};
+
 namespace utils {
 
 // Get names of graph inputs and outputs
 void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSession>& session_object,
-                              std::vector<std::string>& input_names,
-                              std::vector<std::string>& output_names);
+                              InlinedVector<std::string>& input_names,
+                              InlinedVector<std::string>& output_names);
 // Fetch the parameter name from suffix: name = param_name+suffix,
 // returns True if suffix is present in name else False
 bool GetParamNameFromSuffix(const std::string& name, const std::string& suffix, std::string& param_name);
@@ -34,7 +68,7 @@ void WrapInOrtValue(T value,
                     AllocatorPtr alloc = nullptr) {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
+  static AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
 
   TensorShape shape({1});
   auto element_type = DataTypeImpl::GetType<T>();

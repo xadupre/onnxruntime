@@ -20,51 +20,52 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/platform/path_lib.h"
+#include "core/framework/to_tensor_proto_element_type.h"
 #include "core/session/ort_apis.h"
 #include "onnx/defs/tensor_proto_util.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
+using namespace ::onnxruntime::utils;
+
+TensorProto ToTensorInitialize(TensorProto_DataType datatype) {
+  TensorProto t;
+  t.clear_int32_data();
+  t.set_data_type(datatype);
+  return t;
+}
+
+TensorProto ToScalarTensor(TensorProto_DataType datatype, int32_t value) {
+  TensorProto t = ToTensorInitialize(datatype);
+  t.add_int32_data(value);
+  return t;
+}
+
+#define TO_TENSOR_ORT_TYPE(TYPE)                                                          \
+  template <>                                                                             \
+  TensorProto ToTensor<onnxruntime::TYPE>(const onnxruntime::TYPE& value) {               \
+    return ToScalarTensor(ToTensorProtoElementType<onnxruntime::TYPE>(), value.val);      \
+  }                                                                                       \
+  template <>                                                                             \
+  TensorProto ToTensor<onnxruntime::TYPE>(const std::vector<onnxruntime::TYPE>& values) { \
+    TensorProto t = ToTensorInitialize(ToTensorProtoElementType<onnxruntime::TYPE>());    \
+    for (const onnxruntime::TYPE& val : values) {                                         \
+      t.add_int32_data(val.val);                                                          \
+    }                                                                                     \
+    return t;                                                                             \
+  }
+
+namespace ONNX_NAMESPACE {
 
 // Provide template specializations for onnxruntime-specific types.
-namespace ONNX_NAMESPACE {
-template <>
-TensorProto ToTensor<onnxruntime::MLFloat16>(const onnxruntime::MLFloat16& value) {
-  TensorProto t;
-  t.set_data_type(TensorProto_DataType_FLOAT16);
-  t.add_int32_data(value.val);
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::MLFloat16>(const std::vector<onnxruntime::MLFloat16>& values) {
-  TensorProto t;
-  t.clear_int32_data();
-  t.set_data_type(TensorProto_DataType_FLOAT16);
-  for (const onnxruntime::MLFloat16& val : values) {
-    t.add_int32_data(val.val);
-  }
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::BFloat16>(const onnxruntime::BFloat16& value) {
-  TensorProto t;
-  t.set_data_type(TensorProto_DataType_BFLOAT16);
-  t.add_int32_data(value.val);
-  return t;
-}
-
-template <>
-TensorProto ToTensor<onnxruntime::BFloat16>(const std::vector<onnxruntime::BFloat16>& values) {
-  TensorProto t;
-  t.clear_int32_data();
-  t.set_data_type(TensorProto_DataType_BFLOAT16);
-  for (const onnxruntime::BFloat16& val : values) {
-    t.add_int32_data(val.val);
-  }
-  return t;
-}
+TO_TENSOR_ORT_TYPE(MLFloat16)
+TO_TENSOR_ORT_TYPE(BFloat16)
+#if !defined(DISABLE_FLOAT8_TYPES)
+TO_TENSOR_ORT_TYPE(Float8E4M3FN)
+TO_TENSOR_ORT_TYPE(Float8E4M3FNUZ)
+TO_TENSOR_ORT_TYPE(Float8E5M2)
+TO_TENSOR_ORT_TYPE(Float8E5M2FNUZ)
+#endif
 
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
                 const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
@@ -86,6 +87,7 @@ bool operator!=(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
 
 }  // namespace ONNX_NAMESPACE
 
+namespace onnxruntime {
 namespace {
 
 // This function doesn't support string tensors
@@ -139,8 +141,8 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
     external_file_path = location;
   } else {
     if (tensor_proto_dir != nullptr) {
-      external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir,
-                                                                       external_data_info->GetRelPath());
+      external_file_path = onnxruntime::ConcatPathComponent(tensor_proto_dir,
+                                                            external_data_info->GetRelPath());
     } else {
       external_file_path = external_data_info->GetRelPath();
     }
@@ -161,9 +163,9 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
 // Uses the tensor_proto_dir to construct the full path for external data. If tensor_proto_dir == nullptr
 // then uses the current directory instead.
 // This function does not unpack string_data of an initializer tensor
-static Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                        const ORTCHAR_T* tensor_proto_dir,
-                                        std::vector<uint8_t>& unpacked_tensor) {
+Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                 const ORTCHAR_T* tensor_proto_dir,
+                                 std::vector<uint8_t>& unpacked_tensor) {
   std::basic_string<ORTCHAR_T> external_file_path;
   onnxruntime::FileOffsetType file_offset;
   SafeInt<size_t> tensor_byte_size;
@@ -183,10 +185,52 @@ static Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tenso
 
   return Status::OK();
 }
+
+// TODO(unknown): Change the current interface to take Path object for model path
+// so that validating and manipulating path for reading external data becomes easy
+Status TensorProtoToOrtValueImpl(const Env& env, const ORTCHAR_T* model_path,
+                                 const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                 const MemBuffer* m, AllocatorPtr alloc,
+                                 OrtValue& value) {
+  if (m && m->GetBuffer() == nullptr) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "MemBuffer has not been allocated.");
+  }
+
+  // to construct a Tensor with std::string we need to pass an allocator to the Tensor ctor
+  // as the contents of each string needs to be allocated and freed separately.
+  ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
+  if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING && (m || !alloc)) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor requires allocator to be provided.");
+  }
+
+  // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
+  TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
+  const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
+
+  std::unique_ptr<Tensor> tensor;
+
+  if (m) {
+    tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
+
+    if (tensor->SizeInBytes() > m->GetLen()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The preallocated buffer is too small. Requires ",
+                             tensor->SizeInBytes(), ", Got ", m->GetLen());
+    }
+  } else {
+    tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
+  }
+
+  ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, model_path, tensor_proto, *tensor));
+
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  value.Init(tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+  return Status::OK();
+}
+
 }  // namespace
 
-namespace onnxruntime {
 namespace utils {
+
 #if !defined(ORT_MINIMAL_BUILD)
 static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto& tensor,
                                                const ORTCHAR_T* tensor_proto_dir,
@@ -229,6 +273,13 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint32_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(bool)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(MLFloat16)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(BFloat16)
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E4M3FN)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E4M3FNUZ)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E5M2)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E5M2FNUZ)
+#endif
 
 template <>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*/,
@@ -362,7 +413,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
     if (v < 0 || v > max_value) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
     }
-    p_data[i] = MLFloat16(static_cast<uint16_t>(v));
+    p_data[i] = MLFloat16::FromBits(static_cast<uint16_t>(v));
   }
 
   return Status::OK();
@@ -402,6 +453,150 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 
   return Status::OK();
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+// UnpackTensor<Float8E4M3FN>
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float8E4M3FN* p_data, size_t expected_size) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
+    if (size == 0)
+      return Status::OK();
+
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN != tensor.data_type()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  if (raw_data != nullptr) {
+    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+  }
+
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "UnpackTensor: the pre-allocate size does not match the size in proto");
+
+  constexpr int max_value = std::numeric_limits<uint8_t>::max();
+  for (int i = 0; i < static_cast<int>(expected_size); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
+    }
+    p_data[i] = Float8E4M3FN(static_cast<uint8_t>(v), Float8E4M3FN::FromBits());
+  }
+
+  return Status::OK();
+}
+
+// UnpackTensor<Float8E4M3FNUZ>
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float8E4M3FNUZ* p_data, size_t expected_size) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
+    if (size == 0)
+      return Status::OK();
+
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ != tensor.data_type()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  if (raw_data != nullptr) {
+    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+  }
+
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "UnpackTensor: the pre-allocate size does not match the size in proto");
+
+  constexpr int max_value = std::numeric_limits<uint8_t>::max();
+  for (int i = 0; i < static_cast<int>(expected_size); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
+    }
+    p_data[i] = Float8E4M3FNUZ(static_cast<uint8_t>(v), Float8E4M3FNUZ::FromBits());
+  }
+
+  return Status::OK();
+}
+
+// UnpackTensor<Float8E5M2>
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float8E5M2* p_data, size_t expected_size) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
+    if (size == 0)
+      return Status::OK();
+
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2 != tensor.data_type()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  if (raw_data != nullptr) {
+    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+  }
+
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "UnpackTensor: the pre-allocate size does not match the size in proto");
+
+  constexpr int max_value = std::numeric_limits<uint8_t>::max();
+  for (int i = 0; i < static_cast<int>(expected_size); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
+    }
+    p_data[i] = Float8E5M2(static_cast<uint8_t>(v), Float8E5M2::FromBits());
+  }
+
+  return Status::OK();
+}
+
+// UnpackTensor<Float8E5M2FNUZ>
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float8E5M2FNUZ* p_data, size_t expected_size) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
+    if (size == 0)
+      return Status::OK();
+
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ != tensor.data_type()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  if (raw_data != nullptr) {
+    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+  }
+
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "UnpackTensor: the pre-allocate size does not match the size in proto");
+
+  constexpr int max_value = std::numeric_limits<uint8_t>::max();
+  for (int i = 0; i < static_cast<int>(expected_size); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
+    }
+    p_data[i] = Float8E5M2FNUZ(static_cast<uint8_t>(v), Float8E5M2FNUZ::FromBits());
+  }
+
+  return Status::OK();
+}
+
+#endif
 
 // UnpackTensor from raw data, external data or the type specific data field.
 // Uses the model path to construct the full path for loading external data. In case when model_path is empty
@@ -446,6 +641,13 @@ INSTANTIATE_UNPACK_TENSOR(MLFloat16)
 INSTANTIATE_UNPACK_TENSOR(BFloat16)
 INSTANTIATE_UNPACK_TENSOR(std::string)
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+INSTANTIATE_UNPACK_TENSOR(Float8E4M3FN)
+INSTANTIATE_UNPACK_TENSOR(Float8E4M3FNUZ)
+INSTANTIATE_UNPACK_TENSOR(Float8E5M2)
+INSTANTIATE_UNPACK_TENSOR(Float8E5M2FNUZ)
+#endif
+
 #define CASE_PROTO_TRACE(X, Y)                                                                     \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                             \
     if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(size, sizeof(Y), out)) {          \
@@ -480,6 +682,12 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
     CASE_PROTO_TRACE(FLOAT16, MLFloat16);
     CASE_PROTO_TRACE(BFLOAT16, BFloat16);
     CASE_PROTO_TRACE(STRING, std::string);
+#if !defined(DISABLE_FLOAT8_TYPES)
+    CASE_PROTO_TRACE(FLOAT8E4M3FN, Float8E4M3FN);
+    CASE_PROTO_TRACE(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
+    CASE_PROTO_TRACE(FLOAT8E5M2, Float8E5M2);
+    CASE_PROTO_TRACE(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+#endif
     default:
       return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
   }
@@ -645,7 +853,7 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
  * @param env
  * @param model_path
  * @param tensor_proto  tensor data in protobuf format
- * @param tensorp       pre-allocated tensor object, where we store the data
+ * @param tensor        pre-allocated tensor object, where we store the data
  * @return
  */
 Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
@@ -659,7 +867,7 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
   const DataTypeImpl* const source_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   if (source_type->Size() > tensor.DataType()->Size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "TensorProto type ", DataTypeImpl::ToString(source_type),
-                           " can not be writen into Tensor type ", DataTypeImpl::ToString(tensor.DataType()));
+                           " can not be written into Tensor type ", DataTypeImpl::ToString(tensor.DataType()));
   }
 
   // find raw data in proto buf
@@ -714,6 +922,12 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
     CASE_PROTO(UINT64, uint64_t);
     CASE_PROTO(FLOAT16, MLFloat16);
     CASE_PROTO(BFLOAT16, BFloat16);
+#if !defined(DISABLE_FLOAT8_TYPES)
+    CASE_PROTO(FLOAT8E4M3FN, Float8E4M3FN);
+    CASE_PROTO(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
+    CASE_PROTO(FLOAT8E5M2, Float8E5M2);
+    CASE_PROTO(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+#endif
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING:
       ORT_RETURN_IF_ERROR(UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
                                                     static_cast<std::string*>(preallocated),
@@ -729,44 +943,18 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
   return Status::OK();
 }
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 6239)
-#endif
-// TODO: Change the current interface to take Path object for model path
-// so that validating and manipulating path for reading external data becomes easy
-Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
-                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                            const MemBuffer& m, OrtValue& value) {
-  if (m.GetBuffer() == nullptr) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "TensorProtoToMLValue() must take a pre-allocated MemBuffer!");
-  }
-
-  ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
-  if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not use pre-allocated buffer");
-  }
-
-  // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
-  TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
-  const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  std::unique_ptr<Tensor> tensorp = std::make_unique<Tensor>(type, tensor_shape, m.GetBuffer(), m.GetAllocInfo());
-  if (tensorp->SizeInBytes() > m.GetLen()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The preallocated buffer is too small. Requires ",
-                           tensorp->SizeInBytes(), ", Got ", m.GetLen());
-  }
-
-  ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, model_path, tensor_proto, *tensorp));
-
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  value.Init(tensorp.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-  return Status::OK();
+Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* model_path,
+                             const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                             const MemBuffer& m, OrtValue& value) {
+  return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, &m, nullptr, value);
 }
-#ifdef _MSC_VER
-#pragma warning(pop)
-#pragma warning(disable : 6239)
-#endif
+
+Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* model_path,
+                             const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                             AllocatorPtr alloc, OrtValue& value) {
+  return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, nullptr, alloc, value);
+}
+
 #define CASE_TYPE(X)                             \
   case ONNX_NAMESPACE::TensorProto_DataType_##X: \
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;
@@ -789,6 +977,12 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(COMPLEX64)
     CASE_TYPE(COMPLEX128)
     CASE_TYPE(BFLOAT16)
+#if !defined(DISABLE_FLOAT8_TYPES)
+    CASE_TYPE(FLOAT8E4M3FN)
+    CASE_TYPE(FLOAT8E4M3FNUZ)
+    CASE_TYPE(FLOAT8E5M2)
+    CASE_TYPE(FLOAT8E5M2FNUZ)
+#endif
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
@@ -831,6 +1025,8 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const Path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name) {
+  ORT_RETURN_IF_NOT(node.attribute_size() > 0, "Constant node: ", node.name(), " has no data attributes");
+
   const AttributeProto& constant_attribute = node.attribute(0);
 
   switch (constant_attribute.type()) {
@@ -1313,7 +1509,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
   if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
         initializer,
-        model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(),
+        (model_path.IsEmpty() || model_path.ParentPath().IsEmpty()) ? nullptr : model_path.ParentPath().ToPathString().c_str(),
         unpacked_tensor));
     return Status::OK();
   }
@@ -1332,6 +1528,12 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
     CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
     CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
+#if !defined(DISABLE_FLOAT8_TYPES)
+    CASE_UNPACK(FLOAT8E4M3FN, onnxruntime::Float8E4M3FN, int32_data_size);
+    CASE_UNPACK(FLOAT8E4M3FNUZ, onnxruntime::Float8E4M3FNUZ, int32_data_size);
+    CASE_UNPACK(FLOAT8E5M2, onnxruntime::Float8E5M2, int32_data_size);
+    CASE_UNPACK(FLOAT8E5M2FNUZ, onnxruntime::Float8E5M2FNUZ, int32_data_size);
+#endif
     default:
       break;
   }
