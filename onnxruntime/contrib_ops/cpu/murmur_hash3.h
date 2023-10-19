@@ -14,6 +14,7 @@ class MurmurHash3 final : public OpKernel {
   MurmurHash3(const OpKernelInfo& info) : OpKernel(info) {
     seed_ = static_cast<uint32_t>(info.GetAttrOrDefault<int64_t>("seed", 0));
     is_positive_ = info.GetAttrOrDefault<int64_t>("positive", 1) == 1;
+    separator_ = info.GetAttrOrDefault<std::string>("separator", "");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -23,6 +24,7 @@ class MurmurHash3 final : public OpKernel {
 
  private:
   uint32_t seed_;
+  std::string separator_;
   bool is_positive_{true};
 };
 }  // namespace contrib

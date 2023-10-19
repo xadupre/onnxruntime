@@ -1986,6 +1986,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MurmurHash3, 1,
                                     "If value is 1, output type is uint32_t, else int32_t. Default value is 1.",
                                     AttributeProto::INT,
                                     (int64_t)1LL)
+                                .Attr(
+                                    "separator",
+                                    "If not empty, the separator is used to split the input string into substrings. "
+                                    "The operator hashes every of them and adds them all into one tensor.",
+                                    AttributeProto::STRING,
+                                    "")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   // type inference
                                   auto positive_attr = ctx.getAttribute("positive");
