@@ -23,7 +23,8 @@ Status CheckInputs(const Tensor* query,
                    int kv_num_heads,
                    const Tensor* seqlens_k,
                    const Tensor* total_seqlen,
-                   float scale) {
+                   float scale,
+                   float softcap) {
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
@@ -236,6 +237,7 @@ Status CheckInputs(const Tensor* query,
     output_parameters->is_unidirectional = true;
     output_parameters->is_prompt = is_prompt;
     output_parameters->scale = scale;
+    output_parameters->softcap = softcap;
     output_parameters->qkv_format = qkv_format;
     output_parameters->past_kv_format = past_kv_format;
   }
@@ -256,45 +258,14 @@ Status CheckInputs(const Tensor* query,
                    const Tensor* seqlens_k,
                    const Tensor* total_seqlen,
                    float scale,
+                   float softcap,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap);
 }
-
-template <typename T>
-Status PackVIntoRotaryQKV(concurrency::ThreadPool* tp,
-                          int batch_size,
-                          int sequence_length,
-                          int num_heads,
-                          int kv_num_heads,
-                          int head_size,
-                          const T* input,
-                          T* output) {
-  int seq_stride = head_size;
-  int head_stride = sequence_length * seq_stride;
-  int batch_stride = (num_heads + 2 * kv_num_heads) * head_stride;
-
-  const int loop_len = batch_size * sequence_length * kv_num_heads;
-  const double cost = static_cast<double>(head_size);
-  ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    for (std::ptrdiff_t ptr = begin; ptr != end; ++ptr) {
-      const int b = static_cast<int>((ptr / kv_num_heads) / sequence_length);
-      const int s = static_cast<int>((ptr / kv_num_heads) % sequence_length);
-      const int n = static_cast<int>(ptr % kv_num_heads);
-      const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
-      const T* input_data = input + block_offset;
-      T* output_data = output + block_offset;
-      for (int i = 0; i < head_size; i++) {
-        output_data[i] = input_data[i];
-      }
-    }
-  });
-  return Status::OK();
-}
-
 }  // namespace group_query_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime
