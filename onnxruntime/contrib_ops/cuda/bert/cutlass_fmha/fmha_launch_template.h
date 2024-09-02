@@ -169,7 +169,10 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.head_dim_value = params.v_head_size;
 
     p.scale = params.scale;
+
+    #if defined(CUDA_VERSION) && CUDA_VERSION >= 12010
     p.softcap = params.softcap;
+    #endif
 
     // When params.cu_seqlens_q is provided, num_queries is max_seq_q and num_keys will be set inside the kernel
     p.num_queries = params.sequence_length;
@@ -222,7 +225,9 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
       p.bias_strideB = 0;
     }
 
+    #if defined(CUDA_VERSION) && CUDA_VERSION >= 12010
     p.use_smooth_softmax = params.use_smooth_softmax;
+    #endif
   }
 
   auto kernel_fn = attention_kernel_batched_impl<Attention>;
